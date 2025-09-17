@@ -1,16 +1,34 @@
-import React from 'react';
+
+import React, { useState } from "react";
 import { SearchBar } from "./components/SearchBar";
 import { FilterButton } from "./components/FilterButton";
 import { SurpriseMeButton } from "./components/SurpriseMeButton";
+import { FilterModel, FilterOptions } from "/Users/andrewloniewski/DineValleyTest/src/sections/MainContent/components/FilterModel.tsx";
 
-export const SearchSection = () => {
+interface SearchSectionProps {
+  value: string;
+  onChange: (v: string) => void;
+  filters: FilterOptions;
+  setFilters: (f: FilterOptions) => void;
+}
+
+export const SearchSection: React.FC<SearchSectionProps> = ({ value, onChange, filters, setFilters }) => {
+  const [filterOpen, setFilterOpen] = useState(false);
+
   return (
     <div className="box-border caret-transparent outline-[oklab(0.708_0_0_/_0.5)] mb-6">
       <div className="box-border caret-transparent gap-x-2 flex outline-[oklab(0.708_0_0_/_0.5)] gap-y-2">
-        <SearchBar />
-        <FilterButton />
+        <SearchBar value={value} onChange={onChange} />
+        <FilterButton onClick={() => setFilterOpen(true)} />
         <SurpriseMeButton />
       </div>
+      <FilterModel
+        open={filterOpen}
+        onClose={() => setFilterOpen(false)}
+        value={filters}
+        onChange={setFilters}
+        onClear={() => setFilters({ cuisines: [], priceRanges: [], minRating: 0, dietary: [] })}
+      />
     </div>
   );
 };

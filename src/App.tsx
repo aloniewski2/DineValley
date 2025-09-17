@@ -18,7 +18,6 @@ export const App = () => {
     ? restaurants.find((r) => r.id === selectedRestaurantId)
     : null;
 
-  // Navigation handlers
   const handleNavigate = (page: Page) => setCurrentPage(page);
 
   const handleSelectRestaurant = (id: string) => {
@@ -38,7 +37,6 @@ export const App = () => {
       )
     );
 
-  // Page render
   const renderPage = () => {
     switch (currentPage) {
       case "discover":

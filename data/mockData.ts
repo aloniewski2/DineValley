@@ -10,6 +10,8 @@ export const mockRestaurants: Restaurant[] = [
     address: "123 Main St",
     reviewCount: 120,
     priceRange: "$$",
+    isFavorite: false,
+    dietary: ["Vegetarian"],
   },
   {
     id: "2",
@@ -20,5 +22,7 @@ export const mockRestaurants: Restaurant[] = [
     address: "456 Ocean Ave",
     reviewCount: 95,
     priceRange: "$$$",
+    isFavorite: false,
+    dietary: ["Gluten-Free", "Dairy-Free"],
   },
 ];
