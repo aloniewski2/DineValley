@@ -1,27 +1,85 @@
-import React from "react";
+import React, { useState } from "react";
 import { Sidebar } from "./sections/Sidebar";
-import { MainContent } from "./sections/MainContent";
+import { DiscoverPage } from "../src/sections/MainContent/DiscoverPage";
+import { RecommendationsPage } from "./sections/MainContent/RecommendationsPage";
+import { ProfilePage } from "../src/sections/MainContent/ProfilePage";
+import { RestaurantDetailsPage } from "../src/sections/MainContent/RestaurantDetailsPage";
+import { mockRestaurants } from "../data/mockdata";
+import { Restaurant } from "../types";
+
+export type Page = "discover" | "recommendations" | "profile" | "restaurant-details";
 
 export const App = () => {
+  const [currentPage, setCurrentPage] = useState<Page>("discover");
+  const [selectedRestaurantId, setSelectedRestaurantId] = useState<string | null>(null);
+  const [restaurants, setRestaurants] = useState<Restaurant[]>(mockRestaurants);
+
+  const selectedRestaurant = selectedRestaurantId
+    ? restaurants.find((r) => r.id === selectedRestaurantId)
+    : null;
+
+  const handleNavigate = (page: Page) => setCurrentPage(page);
+  const handleSelectRestaurant = (id: string) => {
+    setSelectedRestaurantId(id);
+    setCurrentPage("restaurant-details");
+  };
+  const handleBackFromRestaurant = () => {
+    setSelectedRestaurantId(null);
+    setCurrentPage("discover");
+  };
+  const handleToggleFavorite = (id: string) =>
+    setRestaurants((prev) =>
+      prev.map((r) =>
+        r.id === id ? { ...r, isFavorite: !r.isFavorite } : r
+      )
+    );
+
+  const renderPage = () => {
+    switch (currentPage) {
+      case "discover":
+        return (
+          <DiscoverPage
+            restaurants={restaurants}
+            onSelectRestaurant={handleSelectRestaurant}
+            onToggleFavorite={handleToggleFavorite}
+          />
+        );
+      case "recommendations":
+        return (
+          <RecommendationsPage
+            restaurants={restaurants}
+            onSelectRestaurant={handleSelectRestaurant}
+            onToggleFavorite={handleToggleFavorite}
+          />
+        );
+      case "profile":
+        return (
+          <ProfilePage
+            restaurants={restaurants}
+            onSelectRestaurant={handleSelectRestaurant}
+            onToggleFavorite={handleToggleFavorite}
+          />
+        );
+      case "restaurant-details":
+        if (!selectedRestaurant) return null;
+        return (
+          <RestaurantDetailsPage
+            restaurant={selectedRestaurant}
+            onBack={handleBackFromRestaurant}
+            onToggleFavorite={handleToggleFavorite}
+          />
+        );
+      default:
+        return null;
+    }
+  };
+
   return (
-    <body className="text-[oklch(0.145_0_0)] text-base not-italic normal-nums font-normal accent-auto bg-white box-border caret-transparent block tracking-[normal] leading-6 list-outside list-disc outline-[oklab(0.708_0_0_/_0.5)] text-left indent-[0px] normal-case visible border-separate font-ui_sans_serif">
-      <div className="box-border caret-transparent outline-[oklab(0.708_0_0_/_0.5)]">
-        <div className="box-border caret-transparent h-[952px] outline-[oklab(0.708_0_0_/_0.5)] translate-y-12">
-          <div className="fixed box-border caret-transparent h-[952px] outline-[oklab(0.708_0_0_/_0.5)] overflow-auto inset-0">
-            <div className="relative box-border caret-transparent basis-0 grow shrink-0 h-[952px] min-h-px min-w-px outline-[oklab(0.708_0_0_/_0.5)] w-full">
-              <div className="box-border caret-transparent flex min-h-[1000px] outline-[oklab(0.708_0_0_/_0.5)] w-full">
-                <div className="box-border caret-transparent flex min-h-[952px] outline-[oklab(0.708_0_0_/_0.5)] w-full">
-                  <div className="box-content caret-black min-h-0 min-w-0 outline-black md:aspect-auto md:box-border md:caret-transparent md:min-h-[auto] md:min-w-[auto] md:outline-[oklab(0.708_0_0_/_0.5)] md:overscroll-x-auto md:overscroll-y-auto md:snap-align-none md:snap-normal md:snap-none md:decoration-auto md:underline-offset-auto md:[mask-position:0%] md:bg-left-top md:scroll-m-0 md:scroll-p-[auto]">
-                    <div className="static box-content caret-black outline-black w-auto md:relative md:aspect-auto md:box-border md:caret-transparent md:outline-[oklab(0.708_0_0_/_0.5)] md:overscroll-x-auto md:overscroll-y-auto md:snap-align-none md:snap-normal md:snap-none md:decoration-auto md:underline-offset-auto md:w-64 md:[mask-position:0%] md:bg-left-top md:scroll-m-0 md:scroll-p-[auto]"></div>
-                    <Sidebar />
-                  </div>
-                  <MainContent />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+    <div className="flex h-screen bg-gray-50">
+      <Sidebar onNavigate={handleNavigate} />
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {renderPage()}
       </div>
-    </body>
+    </div>
   );
 };
