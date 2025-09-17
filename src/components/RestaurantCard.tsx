@@ -1,56 +1,82 @@
 import React from "react";
+import { Heart } from "lucide-react";
+import { Restaurant } from "../../types";
 
 interface RestaurantCardProps {
-  name: string;
-  cuisineTypes: string[];
-  rating: number;
-  imageUrl?: string;
-  priceRange?: string;
-  address?: string;
-  onClick?: () => void;
+  restaurant: Restaurant;
+  onClick: () => void;
+  onFavorite: () => void;
 }
 
-const RestaurantCard: React.FC<RestaurantCardProps> = ({
-  name,
-  cuisineTypes,
-  rating,
-  imageUrl,
-  priceRange,
-  address,
-}) => {
+export const RestaurantCard = ({
+  restaurant,
+  onClick,
+  onFavorite,
+}: RestaurantCardProps) => {
+  const {
+    imageUrl,
+    name,
+    rating,
+    reviewCount,
+    address,
+    cuisineTypes,
+    priceRange,
+    isFavorite,
+
+  } = restaurant;
+
   return (
-    <div className="bg-white rounded-2xl shadow-md overflow-hidden hover:shadow-lg transition-shadow">
-      {/* Restaurant Image */}
-      <div className="h-40 w-full overflow-hidden">
-        <img
-          src={
-            imageUrl ||
-            "https://via.placeholder.com/400x200.png?text=Restaurant+Image"
-          }
-          alt={name}
-          className="h-full w-full object-cover"
-        />
-      </div>
-
-      {/* Restaurant Info */}
-      <div className="p-4">
-        <h2 className="text-lg font-semibold text-gray-800">{name}</h2>
-        <p className="text-sm text-gray-600">{cuisineTypes.join(", ")}</p>
-
-        {address && (
-          <p className="text-sm text-gray-500 mt-1">{address}</p>
+    <div
+      className="relative rounded-lg overflow-hidden shadow cursor-pointer"
+      onClick={onClick}
+      tabIndex={0}
+      role="button"
+    >
+      <div className="relative">
+        <img src={imageUrl} alt={name} className="h-48 w-full object-cover" />
+        {closed && (
+          <div className="absolute bg-red-500 text-white px-2 py-1 rounded text-xs font-medium top-2 left-2">
+            Closed
+          </div>
         )}
-
-        {/* Rating */}
-        <div className="mt-2 flex items-center">
-          <span className="text-yellow-500 mr-1">⭐</span>
-          <span className="text-sm font-medium text-gray-700">
-            {rating.toFixed(1)}
+        <button
+          className="absolute h-8 w-8 top-2 right-2 flex items-center justify-center rounded-full bg-white bg-opacity-70 hover:bg-opacity-100 transition"
+          onClick={e => {
+            e.stopPropagation();
+            onFavorite();
+          }}
+          aria-label={isFavorite ? "Unsave" : "Save"}
+        >
+          <Heart
+            size={22}
+            strokeWidth={2}
+            className={isFavorite ? "text-red-500 fill-red-500" : "text-gray-300"}
+            fill={isFavorite ? "currentColor" : "white"}
+          />
+        </button>
+      </div>
+      <div className="p-4">
+        <div className="flex gap-x-2 items-center mb-2">
+          <h3 className="text-lg font-semibold">{name}</h3>
+          <span className="text-sm text-gray-500">{priceRange}</span>
+        </div>
+        <div className="flex gap-x-1 flex-wrap mb-2">
+          {cuisineTypes.map((cuisine, index) => (
+            <span key={index} className="text-sm text-gray-600">
+              {cuisine}
+              {index < cuisineTypes.length - 1 && " • "}
+            </span>
+          ))}
+        </div>
+        <p className="text-sm text-gray-500 mb-2">{address}</p>
+        <div className="flex items-center gap-x-1">
+          <span className="text-yellow-500 text-sm">★</span>
+          <span className="text-sm font-medium">{rating}</span>
+          <span className="text-sm text-gray-500">
+            ({reviewCount} reviews)
           </span>
         </div>
       </div>
     </div>
   );
 };
-
-export default RestaurantCard;

@@ -1,6 +1,6 @@
 import React from "react";
 import { Search, Sparkles, User } from "lucide-react";
-import { Page } from "../../App"; // Import Page as a NAMED export
+import { Page } from "../../App";
 
 interface SidebarProps {
   onNavigate: (page: Page) => void;
