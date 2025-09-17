@@ -1,88 +1,56 @@
-import React from 'react';
+import React from "react";
 
 interface RestaurantCardProps {
-  imageUrl: string;
   name: string;
-  rating: string;
-  reviewCount: string;
-  address: string;
   cuisineTypes: string[];
-  priceRange: string;
-  favoriteIconUrl: string;
-  favoriteIconClass: string;
-  showClosedBadge?: boolean;
+  rating: number;
+  imageUrl?: string;
+  priceRange?: string;
+  address?: string;
+  onClick?: () => void;
 }
 
-export const RestaurantCard = ({
-  imageUrl,
+const RestaurantCard: React.FC<RestaurantCardProps> = ({
   name,
-  rating,
-  reviewCount,
-  address,
   cuisineTypes,
+  rating,
+  imageUrl,
   priceRange,
-  favoriteIconUrl,
-  favoriteIconClass,
-  showClosedBadge = false
-}: RestaurantCardProps) => {
+  address,
+}) => {
   return (
-    <div className="relative box-border caret-transparent outline-[oklab(0.708_0_0_/_0.5)]">
-      <div className="box-border caret-transparent outline-[oklab(0.708_0_0_/_0.5)] rounded-lg overflow-hidden">
-        <div className="relative box-border caret-transparent outline-[oklab(0.708_0_0_/_0.5)]">
-          <img
-            src={imageUrl}
-            alt={name}
-            className="box-border caret-transparent h-48 outline-[oklab(0.708_0_0_/_0.5)] w-full object-cover"
-          />
-          {showClosedBadge && (
-            <div className="absolute bg-red-500 text-white px-2 py-1 rounded text-xs font-medium top-2 left-2">
-              Closed
-            </div>
-          )}
-          <button className="absolute box-border caret-transparent h-8 outline-[oklab(0.708_0_0_/_0.5)] w-8 top-2 right-2">
-            <img
-              src={favoriteIconUrl}
-              alt="Favorite"
-              className={`box-border caret-transparent h-6 outline-[oklab(0.708_0_0_/_0.5)] w-6 ${favoriteIconClass}`}
-            />
-          </button>
-        </div>
-        <div className="box-border caret-transparent outline-[oklab(0.708_0_0_/_0.5)] p-4">
-          <div className="box-border caret-transparent gap-x-2 flex outline-[oklab(0.708_0_0_/_0.5)] gap-y-2 mb-2">
-            <h3 className="text-lg font-semibold box-border caret-transparent outline-[oklab(0.708_0_0_/_0.5)]">
-              {name}
-            </h3>
-            <span className="text-sm text-gray-500 box-border caret-transparent outline-[oklab(0.708_0_0_/_0.5)]">
-              {priceRange}
-            </span>
-          </div>
-          <div className="box-border caret-transparent gap-x-1 flex outline-[oklab(0.708_0_0_/_0.5)] gap-y-1 mb-2">
-            {cuisineTypes.map((cuisine, index) => (
-              <span
-                key={index}
-                className="text-sm text-gray-600 box-border caret-transparent outline-[oklab(0.708_0_0_/_0.5)]"
-              >
-                {cuisine}
-                {index < cuisineTypes.length - 1 && " • "}
-              </span>
-            ))}
-          </div>
-          <p className="text-sm text-gray-500 box-border caret-transparent outline-[oklab(0.708_0_0_/_0.5)] mb-2">
-            {address}
-          </p>
-          <div className="box-border caret-transparent gap-x-1 flex outline-[oklab(0.708_0_0_/_0.5)] gap-y-1">
-            <span className="text-yellow-500 text-sm box-border caret-transparent outline-[oklab(0.708_0_0_/_0.5)]">
-              ★
-            </span>
-            <span className="text-sm font-medium box-border caret-transparent outline-[oklab(0.708_0_0_/_0.5)]">
-              {rating}
-            </span>
-            <span className="text-sm text-gray-500 box-border caret-transparent outline-[oklab(0.708_0_0_/_0.5)]">
-              ({reviewCount} reviews)
-            </span>
-          </div>
+    <div className="bg-white rounded-2xl shadow-md overflow-hidden hover:shadow-lg transition-shadow">
+      {/* Restaurant Image */}
+      <div className="h-40 w-full overflow-hidden">
+        <img
+          src={
+            imageUrl ||
+            "https://via.placeholder.com/400x200.png?text=Restaurant+Image"
+          }
+          alt={name}
+          className="h-full w-full object-cover"
+        />
+      </div>
+
+      {/* Restaurant Info */}
+      <div className="p-4">
+        <h2 className="text-lg font-semibold text-gray-800">{name}</h2>
+        <p className="text-sm text-gray-600">{cuisineTypes.join(", ")}</p>
+
+        {address && (
+          <p className="text-sm text-gray-500 mt-1">{address}</p>
+        )}
+
+        {/* Rating */}
+        <div className="mt-2 flex items-center">
+          <span className="text-yellow-500 mr-1">⭐</span>
+          <span className="text-sm font-medium text-gray-700">
+            {rating.toFixed(1)}
+          </span>
         </div>
       </div>
     </div>
   );
 };
+
+export default RestaurantCard;
