@@ -1,10 +1,10 @@
 import React, { useState } from "react";
-import { Sidebar } from "./sections/Sidebar";
-import { DiscoverPage } from "../src/sections/MainContent/DiscoverPage";
+import { Sidebar } from "./sections/Sidebar/Sidebar";
+import { DiscoverPage } from "./sections/MainContent/DiscoverPage";
 import { RecommendationsPage } from "./sections/MainContent/RecommendationsPage";
-import { ProfilePage } from "../src/sections/MainContent/ProfilePage";
-import { RestaurantDetailsPage } from "../src/sections/MainContent/RestaurantDetailsPage";
-import { mockRestaurants } from "../data/mockdata";
+import { ProfilePage } from "./sections/MainContent/ProfilePage";
+import { RestaurantDetailsPage } from "./sections/MainContent/RestaurantDetailsPage";
+import { mockRestaurants } from "../data/mockData";
 import { Restaurant } from "../types";
 
 export type Page = "discover" | "recommendations" | "profile" | "restaurant-details";
@@ -18,15 +18,19 @@ export const App = () => {
     ? restaurants.find((r) => r.id === selectedRestaurantId)
     : null;
 
+  // Navigation handlers
   const handleNavigate = (page: Page) => setCurrentPage(page);
+
   const handleSelectRestaurant = (id: string) => {
     setSelectedRestaurantId(id);
     setCurrentPage("restaurant-details");
   };
+
   const handleBackFromRestaurant = () => {
     setSelectedRestaurantId(null);
     setCurrentPage("discover");
   };
+
   const handleToggleFavorite = (id: string) =>
     setRestaurants((prev) =>
       prev.map((r) =>
@@ -34,6 +38,7 @@ export const App = () => {
       )
     );
 
+  // Page render
   const renderPage = () => {
     switch (currentPage) {
       case "discover":
@@ -76,7 +81,7 @@ export const App = () => {
 
   return (
     <div className="flex h-screen bg-gray-50">
-      <Sidebar onNavigate={handleNavigate} />
+      <Sidebar onNavigate={handleNavigate} currentPage={currentPage} />
       <div className="flex-1 flex flex-col overflow-hidden">
         {renderPage()}
       </div>

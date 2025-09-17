@@ -1,10 +1,10 @@
 import React from "react";
 import { Search, Sparkles, User } from "lucide-react";
-import { Page } from "../../../App";
+import { Page } from "../../App"; // Import Page as a NAMED export
 
 interface SidebarProps {
   onNavigate: (page: Page) => void;
-  currentPage?: Page;
+  currentPage: Page;
 }
 
 const navItems = [
@@ -26,7 +26,7 @@ const navItems = [
 ] as const;
 
 export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, currentPage }) => (
-  <aside className="w-60 h-full bg-white px-4 py-6 border-r flex flex-col gap-2">
+  <aside className="w-64 bg-white px-4 py-6 border-r flex flex-col gap-2">
     <nav className="flex flex-col gap-1">
       {navItems.map((item) => (
         <button

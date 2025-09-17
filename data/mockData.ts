@@ -6,7 +6,7 @@ export const mockRestaurants: Restaurant[] = [
     name: "Pizza Palace",
     cuisineTypes: ["Italian", "Pizza"],
     rating: 4.5,
-    imageUrl: "pizza.jpg",
+    imageUrl: "https://i0.wp.com/olivesandlamb.com/wp-content/uploads/2024/05/Chicken-Parmesan-Pizza-10-4x5-1.jpg?resize=819%2C1024&ssl=1",
     address: "123 Main St",
     reviewCount: 120,
     priceRange: "$$",
