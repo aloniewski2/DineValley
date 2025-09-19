@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { SearchBar } from "./components/SearchBar";
 import { FilterButton } from "./components/FilterButton";
 import { SurpriseMeButton } from "./components/SurpriseMeButton";
-import { FilterModel, FilterOptions } from "/Users/andrewloniewski/DineValleyTest/src/sections/MainContent/components/FilterModel.tsx";
+import { FilterModel, FilterOptions } from "../MainContent/components/FilterModel";
 
 interface SearchSectionProps {
   value: string;
