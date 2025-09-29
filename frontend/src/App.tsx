@@ -1,18 +1,31 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Sidebar } from "./sections/Sidebar/Sidebar";
 import { DiscoverPage } from "./sections/MainContent/DiscoverPage";
 import { RecommendationsPage } from "./sections/MainContent/RecommendationsPage";
 import { ProfilePage } from "./sections/MainContent/ProfilePage";
 import { RestaurantDetailsPage } from "./sections/MainContent/RestaurantDetailsPage";
-import { mockRestaurants } from "../data/mockData";
 import { Restaurant } from "../types";
+import { fetchRestaurants } from "./api/restaurants";
 
 export type Page = "discover" | "recommendations" | "profile" | "restaurant-details";
 
 export const App = () => {
   const [currentPage, setCurrentPage] = useState<Page>("discover");
   const [selectedRestaurantId, setSelectedRestaurantId] = useState<string | null>(null);
-  const [restaurants, setRestaurants] = useState<Restaurant[]>(mockRestaurants);
+  const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+
+  // 🔹 Load restaurants once on startup
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const data = await fetchRestaurants({ keyword: "restaurant" });
+        setRestaurants(data);
+      } catch (err) {
+        console.error("Failed to load restaurants", err);
+      }
+    };
+    load();
+  }, []);
 
   const selectedRestaurant = selectedRestaurantId
     ? restaurants.find((r) => r.id === selectedRestaurantId)
@@ -42,7 +55,6 @@ export const App = () => {
       case "discover":
         return (
           <DiscoverPage
-            restaurants={restaurants}
             onSelectRestaurant={handleSelectRestaurant}
             onToggleFavorite={handleToggleFavorite}
           />

@@ -8,75 +8,73 @@ dotenv.config();
 const app = express();
 app.use(cors());
 
-// Default location = Lehigh Valley
-const DEFAULT_LOCATION = "40.6084,-75.4902"; // Allentown-ish center
-const DEFAULT_RADIUS = 20000; // 20 km
+const PORT = process.env.PORT || 5050;
+const API_KEY = process.env.GOOGLE_PLACES_API_KEY;
 
-// Root route
+// 🔑 Fail fast if key is missing
+if (!API_KEY) {
+  console.error("❌ ERROR: GOOGLE_PLACES_API_KEY is missing in .env");
+  process.exit(1);
+}
+
+// ✅ Health check
 app.get("/", (req, res) => {
   res.send("✅ Backend is alive and ready!");
 });
 
-// Health check route
 app.get("/health", (req, res) => {
-  res.json({ status: "ok", message: "Backend is running 🚀" });
+  res.json({ status: "ok", port: PORT });
 });
 
-// Restaurants route
+// ✅ Restaurants endpoint
 app.get("/restaurants", async (req, res) => {
-  const {
-    keyword,
-    minPrice,
-    maxPrice,
-    openNow,
-    minRating,
-    minReviews,
-  } = req.query;
-
   try {
-    // Build Google Places request params
+    const { keyword, minPrice, maxPrice, opennow } = req.query;
+
     const params = {
-      location: DEFAULT_LOCATION,
-      radius: DEFAULT_RADIUS,
+      location: "40.6084,-75.4902", // Lehigh Valley
+      radius: 20000,
       type: "restaurant",
       keyword,
       minprice: minPrice,
       maxprice: maxPrice,
-      opennow: openNow === "true",
-      key: process.env.GOOGLE_PLACES_API_KEY,
+      opennow: opennow === "true" ? true : undefined,
+      key: API_KEY,
     };
-
-    console.log("➡️ Google API request params:", params);
 
     const response = await axios.get(
       "https://maps.googleapis.com/maps/api/place/nearbysearch/json",
       { params }
     );
 
-    let results = response.data.results || [];
+    // 🔹 Map raw Google response -> simplified restaurant object
+    const mappedResults = response.data.results.map((r) => ({
+      id: r.place_id,
+      name: r.name,
+      imageUrl: r.photos
+        ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${r.photos[0].photo_reference}&key=${API_KEY}`
+        : "https://source.unsplash.com/400x300/?restaurant,food",
+      rating: r.rating || 0,
+      reviewCount: r.user_ratings_total || 0,
+      address: r.vicinity || "",
+      priceLevel: r.price_level ?? null,
+      businessStatus: r.business_status || "UNKNOWN",
+      types: r.types || [],
+    }));
 
-    // Apply custom filters (rating + reviews)
-    if (minRating) {
-      results = results.filter((place) => place.rating >= Number(minRating));
-    }
-    if (minReviews) {
-      results = results.filter(
-        (place) => place.user_ratings_total >= Number(minReviews)
-      );
-    }
-
-    res.json(results);
+    res.json(mappedResults);
   } catch (error) {
     if (error.response) {
       console.error("❌ Google API Error:", error.response.data);
-      return res.status(error.response.status).json(error.response.data);
+      return res
+        .status(error.response.status)
+        .json({ error: error.response.data });
     }
     console.error("❌ Server Error:", error.message);
     res.status(500).json({ error: "Failed to fetch restaurants" });
   }
 });
 
-const PORT = process.env.PORT || 5050;
 app.listen(PORT, () =>
   console.log(`🚀 Backend running on http://localhost:${PORT}`)
 );
