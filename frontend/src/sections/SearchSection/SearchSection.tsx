@@ -3,7 +3,8 @@ import React, { useState } from "react";
 import { SearchBar } from "./components/SearchBar";
 import { FilterButton } from "./components/FilterButton";
 import { SurpriseMeButton } from "./components/SurpriseMeButton";
-import { FilterModel, FilterOptions } from "../MainContent/components/FilterModel";
+import { FilterModel } from "../MainContent/components/FilterModel";
+import { FilterOptions, createDefaultFilters } from "../../../types";
 
 interface SearchSectionProps {
   value: string;
@@ -27,7 +28,7 @@ export const SearchSection: React.FC<SearchSectionProps> = ({ value, onChange, f
         onClose={() => setFilterOpen(false)}
         value={filters}
         onChange={setFilters}
-        onClear={() => setFilters({ cuisines: [], priceRanges: [], minRating: 0, dietary: [] })}
+        onClear={() => setFilters(createDefaultFilters())}
       />
     </div>
   );
