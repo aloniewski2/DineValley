@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Dialog } from "@headlessui/react";
 import { X } from "lucide-react";
+import { FilterOptions, createDefaultFilters } from "../../../../types";
 
 const ALL_CUISINES = [
   "American", "Italian", "Mexican", "Chinese", "Japanese", "Indian", "Thai", "French"
@@ -10,13 +11,6 @@ const ALL_DIETARY = [
   "Vegetarian", "Vegan", "Gluten-Free", "Dairy-Free",
   "Nut-Free", "Egg-Free", "Soy-Free", "Shellfish-Free"
 ];
-
-export interface FilterOptions {
-  cuisines: string[];
-  priceRanges: string[];
-  minRating: number;
-  dietary: string[];
-}
 
 interface FilterModelProps {
   open: boolean;
@@ -33,17 +27,24 @@ export const FilterModel: React.FC<FilterModelProps> = ({
   onChange,
   onClear,
 }) => {
-  const [local, setLocal] = useState(value);
+  const [local, setLocal] = useState<FilterOptions>(value);
 
   useEffect(() => {
-    if (open) setLocal(value);
+    if (open) {
+      setLocal(value);
+    }
   }, [open, value]);
 
   const update = (update: Partial<FilterOptions>) =>
     setLocal((prev) => ({ ...prev, ...update }));
 
   const handleApply = () => {
-    onChange(local);
+    onChange({
+      ...local,
+      cuisines: [...local.cuisines],
+      priceRanges: [...local.priceRanges],
+      dietary: [...local.dietary],
+    });
     onClose();
   };
 
@@ -130,6 +131,41 @@ export const FilterModel: React.FC<FilterModelProps> = ({
             />
           </div>
 
+          {/* Availability */}
+          <div className="mb-4">
+            <label className="block font-semibold mb-1">Availability</label>
+            <button
+              type="button"
+              onClick={() => update({ openNow: !local.openNow })}
+              className={`px-4 py-2 rounded-lg border font-medium transition-colors ${
+                local.openNow
+                  ? "bg-black text-white border-black"
+                  : "bg-white text-gray-700 border-gray-300 hover:bg-black hover:text-white"
+              }`}
+            >
+              {local.openNow ? "Showing open now" : "Include closed"}
+            </button>
+          </div>
+
+          {/* Distance */}
+          <div className="mb-4">
+            <label className="block font-semibold mb-1">
+              Max Distance: {local.distanceMiles.toFixed(0)} miles
+            </label>
+            <input
+              type="range"
+              min={1}
+              max={30}
+              step={1}
+              value={local.distanceMiles}
+              onChange={(e) => update({ distanceMiles: Number(e.target.value) })}
+              className="w-full accent-indigo-500"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Adjust to search within a specific radius of the Lehigh Valley.
+            </p>
+          </div>
+
           {/* Dietary Restrictions */}
           <div className="mb-4">
             <label className="block font-semibold mb-1">
@@ -160,12 +196,7 @@ export const FilterModel: React.FC<FilterModelProps> = ({
             <button
               className="flex-1 py-3 rounded-lg border font-semibold"
               onClick={() => {
-                setLocal({
-                  cuisines: [],
-                  priceRanges: [],
-                  minRating: 0,
-                  dietary: [],
-                });
+                setLocal(createDefaultFilters());
                 onClear();
               }}
               type="button"

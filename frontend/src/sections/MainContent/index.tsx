@@ -1,41 +1,44 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Header } from "./components/Header";
 import { SearchSection } from "../SearchSection/SearchSection";
 import { TrendingSection } from "../TrendingSection/TrendingSection";
 import { AllRestaurantsSection } from "../AllRestaurantsSection/AllRestaurantsSection";
-import { Restaurant } from "../../../types";
+import { Restaurant, FilterOptions, createDefaultFilters } from "../../../types";
 
 // ----- MOCK DATA (Replace with real data/state) -----
 const restaurants: Restaurant[] = [
   {
     id: "1",
     name: "Bella Vista Italian",
-    cuisineTypes: ["Italian", "Mediterranean"],
+    types: ["Italian", "Mediterranean"],
     rating: 4.8,
     imageUrl: "https://c.animaapp.com/mfn8xsm35Iri3M/assets/1.jpg",
     address: "123 Main St, Bethlehem, PA 18018",
     reviewCount: 120,
-    priceRange: "$$$",
+    priceLevel: 3,
+    businessStatus: "OPERATIONAL",
   },
   {
     id: "2",
     name: "The Copper Kettle",
-    cuisineTypes: ["American", "Contemporary"],
+    types: ["American", "Contemporary"],
     rating: 4.5,
     imageUrl: "https://c.animaapp.com/mfn8xsm35Iri3M/assets/2.jpg",
     address: "654 Third St, Bethlehem, PA 18015",
     reviewCount: 95,
-    priceRange: "$$$",
+    priceLevel: 3,
+    businessStatus: "OPERATIONAL",
   },
   {
     id: "3",
     name: "Sakura Sushi House",
-    cuisineTypes: ["Japanese", "Sushi"],
+    types: ["Japanese", "Sushi"],
     rating: 4.6,
     imageUrl: "https://c.animaapp.com/mfn8xsm35Iri3M/assets/3.jpg",
     address: "456 Cedar Ave, Allentown, PA 18104",
     reviewCount: 95,
-    priceRange: "$$",
+    priceLevel: 2,
+    businessStatus: "OPERATIONAL",
   },
   // ...add as many as you need
 ];
@@ -44,8 +47,8 @@ const restaurants: Restaurant[] = [
 const trendingRestaurants = restaurants.slice(0, 3);
 
 // ----- MOCK HANDLERS (Replace with real handlers or state dispatch) -----
-const onSelectRestaurant = (id: string) => {
-  console.log("Selected restaurant:", id);
+const onSelectRestaurant = (restaurant: Restaurant) => {
+  console.log("Selected restaurant:", restaurant.id);
 };
 
 const onToggleFavorite = (id: string) => {
@@ -54,6 +57,12 @@ const onToggleFavorite = (id: string) => {
 // -----------------------------------------------------------
 
 export const MainContent: React.FC = () => {
+  const [searchValue, setSearchValue] = useState("");
+  const [filters, setFilters] = useState<FilterOptions>(createDefaultFilters());
+
+  const handleSearchChange = (value: string) => setSearchValue(value);
+  const handleFiltersChange = (value: FilterOptions) => setFilters(value);
+
   return (
     <main className="box-border caret-transparent flex basis-[0%] flex-col grow outline-[oklab(0.708_0_0_/_0.5)]">
       <Header />
@@ -67,7 +76,12 @@ export const MainContent: React.FC = () => {
               Find your next favorite dining spot in the Lehigh Valley
             </p>
           </div>
-          <SearchSection />
+          <SearchSection
+            value={searchValue}
+            onChange={handleSearchChange}
+            filters={filters}
+            setFilters={handleFiltersChange}
+          />
           <TrendingSection
             restaurants={trendingRestaurants}
             onSelectRestaurant={onSelectRestaurant}
@@ -77,7 +91,6 @@ export const MainContent: React.FC = () => {
             restaurants={restaurants}
             onSelectRestaurant={onSelectRestaurant}
             onToggleFavorite={onToggleFavorite}
-            onClick={onSelectRestaurant}
           />
         </div>
       </div>

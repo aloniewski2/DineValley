@@ -25,6 +25,8 @@ export const RestaurantCard = ({
     businessStatus,
   } = restaurant;
 
+  const resolvedImageUrl = imageUrl || "https://source.unsplash.com/400x300/?restaurant,food";
+
   return (
     <div
       className="relative rounded-lg overflow-hidden shadow cursor-pointer"
@@ -34,12 +36,14 @@ export const RestaurantCard = ({
     >
       <div className="relative">
         <img
-          src={imageUrl}
+          src={resolvedImageUrl}
           alt={name}
           className="h-48 w-full object-cover"
           onError={(e) => {
-            (e.currentTarget as HTMLImageElement).src =
-              "https://source.unsplash.com/400x300/?restaurant,food"; // fallback
+            const target = e.currentTarget as HTMLImageElement;
+            if (target.src !== "https://source.unsplash.com/400x300/?restaurant,food") {
+              target.src = "https://source.unsplash.com/400x300/?restaurant,food"; // fallback
+            }
           }}
         />
 
