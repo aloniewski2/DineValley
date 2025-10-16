@@ -20,6 +20,10 @@ export const App = () => {
   const [selectedRestaurantDetails, setSelectedRestaurantDetails] = useState<RestaurantDetails | null>(null);
   const [favoriteIds, setFavoriteIds] = useLocalStorage<string[]>("favoriteRestaurants", []);
   const [recentlyViewed, setRecentlyViewed] = useLocalStorage<string[]>("recentRestaurants", []);
+  const [favoriteSnapshots, setFavoriteSnapshots] = useLocalStorage<Record<string, Restaurant>>(
+    "favoriteRestaurantData",
+    {}
+  );
 
   // 🔹 Load restaurants once on startup
   useEffect(() => {
@@ -72,6 +76,44 @@ export const App = () => {
     };
   }, [selectedRestaurantId, currentPage]);
 
+  const mapDetailsToRestaurant = useCallback(
+    (details: RestaurantDetails, fallback?: Restaurant | null): Restaurant => ({
+      id: details.id,
+      name: details.name,
+      imageUrl: details.imageUrl,
+      rating: details.rating ?? fallback?.rating ?? 0,
+      reviewCount: fallback?.reviewCount ?? details.reviewSummary?.total ?? 0,
+      address: details.address || fallback?.address || "",
+      priceLevel: fallback?.priceLevel ?? null,
+      businessStatus: fallback?.businessStatus ?? "UNKNOWN",
+      types: details.types ?? fallback?.types ?? [],
+      isFavorite: true,
+      dietary: fallback?.dietary,
+    }),
+    []
+  );
+
+  const shouldUpdateFavoriteSnapshot = useCallback(
+    (existing: Restaurant | undefined, next: Restaurant) => {
+      if (!existing) return true;
+      if (existing.name !== next.name) return true;
+      if (existing.imageUrl !== next.imageUrl) return true;
+      if (existing.rating !== next.rating) return true;
+      if (existing.reviewCount !== next.reviewCount) return true;
+      if (existing.address !== next.address) return true;
+      if (existing.priceLevel !== next.priceLevel) return true;
+      if (existing.businessStatus !== next.businessStatus) return true;
+      if (existing.types.length !== next.types.length) return true;
+      for (let index = 0; index < existing.types.length; index += 1) {
+        if (existing.types[index] !== next.types[index]) {
+          return true;
+        }
+      }
+      return false;
+    },
+    []
+  );
+
   const handleNavigate = (page: Page) => setCurrentPage(page);
 
   const handleSelectRestaurant = (restaurant: Restaurant) => {
@@ -91,21 +133,69 @@ export const App = () => {
     setCurrentPage("discover");
   };
 
-  const handleToggleFavorite = useCallback((id: string) => {
-    setFavoriteIds((prev) => {
-      const exists = prev.includes(id);
-      if (exists) {
-        return prev.filter((favId) => favId !== id);
-      }
-      return [id, ...prev].slice(0, 100);
-    });
-    setRestaurants((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, isFavorite: !r.isFavorite } : r))
-    );
-    setSelectedRestaurantSnapshot((prev) =>
-      prev && prev.id === id ? { ...prev, isFavorite: !prev.isFavorite } : prev
-    );
-  }, [setFavoriteIds]);
+  const handleToggleFavorite = useCallback(
+    (id: string) => {
+      let shouldAdd = false;
+
+      setFavoriteIds((prev) => {
+        const exists = prev.includes(id);
+        shouldAdd = !exists;
+        if (exists) {
+          return prev.filter((favId) => favId !== id);
+        }
+        return [id, ...prev].slice(0, 100);
+      });
+
+      setFavoriteSnapshots((prev) => {
+        if (shouldAdd) {
+          const fromList = restaurants.find((restaurant) => restaurant.id === id) ?? null;
+          const fallback = fromList ?? selectedRestaurantSnapshot ?? prev[id] ?? null;
+          const candidate =
+            fromList ??
+            selectedRestaurantSnapshot ??
+            (selectedRestaurantDetails
+              ? mapDetailsToRestaurant(selectedRestaurantDetails, fallback)
+              : fallback);
+
+          if (!candidate) {
+            return prev;
+          }
+
+          if (prev[id] && !shouldUpdateFavoriteSnapshot(prev[id], candidate)) {
+            return prev;
+          }
+
+          return {
+            ...prev,
+            [id]: { ...candidate, isFavorite: true },
+          };
+        }
+
+        if (!(id in prev)) {
+          return prev;
+        }
+
+        const { [id]: _removed, ...rest } = prev;
+        return rest;
+      });
+
+      setRestaurants((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, isFavorite: !r.isFavorite } : r))
+      );
+      setSelectedRestaurantSnapshot((prev) =>
+        prev && prev.id === id ? { ...prev, isFavorite: !prev.isFavorite } : prev
+      );
+    },
+    [
+      mapDetailsToRestaurant,
+      restaurants,
+      selectedRestaurantDetails,
+      selectedRestaurantSnapshot,
+      setFavoriteIds,
+      setFavoriteSnapshots,
+      shouldUpdateFavoriteSnapshot,
+    ]
+  );
 
   useEffect(() => {
     setRestaurants((prev) =>
@@ -119,6 +209,63 @@ export const App = () => {
     );
   }, [favoriteIds]);
 
+  useEffect(() => {
+    if (!restaurants.length || !favoriteIds.length) {
+      return;
+    }
+
+    const restaurantMap = new Map(restaurants.map((restaurant) => [restaurant.id, restaurant]));
+
+    setFavoriteSnapshots((prev) => {
+      let changed = false;
+      const next = { ...prev };
+
+      favoriteIds.forEach((id) => {
+        const match = restaurantMap.get(id);
+        if (!match) return;
+
+        if (shouldUpdateFavoriteSnapshot(next[id], match)) {
+          next[id] = { ...match, isFavorite: true };
+          changed = true;
+        }
+      });
+
+      return changed ? next : prev;
+    });
+  }, [favoriteIds, restaurants, setFavoriteSnapshots, shouldUpdateFavoriteSnapshot]);
+
+  useEffect(() => {
+    if (!selectedRestaurantDetails) {
+      return;
+    }
+
+    const id = selectedRestaurantDetails.id;
+    if (!favoriteIds.includes(id)) {
+      return;
+    }
+
+    setFavoriteSnapshots((prev) => {
+      const fallback = selectedRestaurantSnapshot ?? prev[id] ?? null;
+      const candidate = mapDetailsToRestaurant(selectedRestaurantDetails, fallback);
+
+      if (prev[id] && !shouldUpdateFavoriteSnapshot(prev[id], candidate)) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        [id]: { ...candidate, isFavorite: true },
+      };
+    });
+  }, [
+    favoriteIds,
+    mapDetailsToRestaurant,
+    selectedRestaurantDetails,
+    selectedRestaurantSnapshot,
+    setFavoriteSnapshots,
+    shouldUpdateFavoriteSnapshot,
+  ]);
+
   const recentRestaurants = useMemo(() =>
     recentlyViewed
       .map((id) => restaurants.find((r) => r.id === id) || null)
@@ -126,10 +273,22 @@ export const App = () => {
     [recentlyViewed, restaurants]
   );
 
-  const favoriteRestaurants = useMemo(
-    () => restaurants.filter((restaurant) => favoriteIds.includes(restaurant.id)),
-    [restaurants, favoriteIds]
-  );
+  const favoriteRestaurants = useMemo(() => {
+    if (!favoriteIds.length) return [];
+
+    const favoritesFromList = restaurants.filter((restaurant) =>
+      favoriteIds.includes(restaurant.id)
+    );
+    const existingIds = new Set(favoritesFromList.map((restaurant) => restaurant.id));
+
+    const storedExtras = favoriteIds
+      .map((id) => favoriteSnapshots[id])
+      .filter((restaurant): restaurant is Restaurant => Boolean(restaurant))
+      .filter((restaurant) => !existingIds.has(restaurant.id))
+      .map((restaurant) => ({ ...restaurant, isFavorite: true }));
+
+    return [...favoritesFromList, ...storedExtras];
+  }, [favoriteIds, favoriteSnapshots, restaurants]);
 
   const renderPage = () => {
     switch (currentPage) {
