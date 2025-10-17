@@ -3,7 +3,6 @@ import { Restaurant, FilterOptions, DEFAULT_FILTERS, createDefaultFilters } from
 import { RestaurantCard } from "../../components/RestaurantCard";
 import { SearchSection } from "../SearchSection/SearchSection";
 import { TrendingSection } from "../TrendingSection/TrendingSection";
-import { AllRestaurantsSection } from "../AllRestaurantsSection/AllRestaurantsSection";
 import { fetchRestaurants } from "../../api/restaurants";
 import { StatusBanner } from "../../components/StatusBanner";
 
@@ -258,12 +257,6 @@ export const DiscoverPage = ({
           </div>
         </section>
       )}
-      <AllRestaurantsSection
-        restaurants={restaurants}
-        onSelectRestaurant={onSelectRestaurant}
-        onToggleFavorite={onToggleFavorite}
-        loading={isInitialLoading}
-      />
       {!loading && !nextPageToken && <p className="text-center text-gray-500">No more restaurants</p>}
     </div>
   );

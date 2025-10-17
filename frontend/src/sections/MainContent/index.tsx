@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Header } from "./components/Header";
 import { SearchSection } from "../SearchSection/SearchSection";
 import { TrendingSection } from "../TrendingSection/TrendingSection";
-import { AllRestaurantsSection } from "../AllRestaurantsSection/AllRestaurantsSection";
 import { Restaurant, FilterOptions, createDefaultFilters } from "../../../types";
 
 // ----- MOCK DATA (Replace with real data/state) -----
@@ -84,11 +83,6 @@ export const MainContent: React.FC = () => {
           />
           <TrendingSection
             restaurants={trendingRestaurants}
-            onSelectRestaurant={onSelectRestaurant}
-            onToggleFavorite={onToggleFavorite}
-          />
-          <AllRestaurantsSection
-            restaurants={restaurants}
             onSelectRestaurant={onSelectRestaurant}
             onToggleFavorite={onToggleFavorite}
           />
