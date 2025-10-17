@@ -58,9 +58,9 @@ DineValley/
 - GitHub Actions (CI/CD)
 
 ## Contributing
-1. Create feature branch from `main`
-2. Make and test your changes
-3. Submit a pull request
+1. Create feature branch from `testing` (make sure it is up to date with main)
+3. Make and test your changes
+4. Submit a pull request
 
 ## Troubleshooting
 - If build fails, check import paths and make sure all required files are committed.
