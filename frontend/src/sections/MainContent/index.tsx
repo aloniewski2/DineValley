@@ -80,6 +80,8 @@ export const MainContent: React.FC = () => {
             onChange={handleSearchChange}
             filters={filters}
             setFilters={handleFiltersChange}
+            onSurprise={() => trendingRestaurants.length && onSelectRestaurant(trendingRestaurants[0])}
+            surpriseDisabled={trendingRestaurants.length === 0}
           />
           <TrendingSection
             restaurants={trendingRestaurants}

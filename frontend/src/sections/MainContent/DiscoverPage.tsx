@@ -208,6 +208,16 @@ export const DiscoverPage = ({
 
   const isInitialLoading = loading && restaurants.length === 0;
 
+  const handleSurpriseMe = useCallback(() => {
+    const pool = restaurants.length > 0 ? restaurants : recentlyViewed;
+    if (!pool.length) {
+      return;
+    }
+    const randomIndex = Math.floor(Math.random() * pool.length);
+    const randomRestaurant = pool[randomIndex];
+    onSelectRestaurant(randomRestaurant);
+  }, [restaurants, recentlyViewed, onSelectRestaurant]);
+
   return (
     <div className="p-6 space-y-6">
       {isOffline && (
@@ -229,7 +239,14 @@ export const DiscoverPage = ({
           }}
         />
       )}
-      <SearchSection value={search} onChange={setSearch} filters={filters} setFilters={applyFilters} />
+      <SearchSection
+        value={search}
+        onChange={setSearch}
+        filters={filters}
+        setFilters={applyFilters}
+        onSurprise={handleSurpriseMe}
+        surpriseDisabled={isInitialLoading || (restaurants.length === 0 && recentlyViewed.length === 0)}
+      />
       <TrendingSection
         restaurants={restaurants}
         onLoadMore={loadMore}
