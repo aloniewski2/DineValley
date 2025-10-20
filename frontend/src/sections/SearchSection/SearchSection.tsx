@@ -11,9 +11,18 @@ interface SearchSectionProps {
   onChange: (v: string) => void;
   filters: FilterOptions;
   setFilters: (f: FilterOptions) => void;
+  onSurprise?: () => void;
+  surpriseDisabled?: boolean;
 }
 
-export const SearchSection: React.FC<SearchSectionProps> = ({ value, onChange, filters, setFilters }) => {
+export const SearchSection: React.FC<SearchSectionProps> = ({
+  value,
+  onChange,
+  filters,
+  setFilters,
+  onSurprise,
+  surpriseDisabled = false,
+}) => {
   const [filterOpen, setFilterOpen] = useState(false);
 
   return (
@@ -21,7 +30,7 @@ export const SearchSection: React.FC<SearchSectionProps> = ({ value, onChange, f
       <div className="box-border caret-transparent gap-x-2 flex outline-[oklab(0.708_0_0_/_0.5)] gap-y-2">
         <SearchBar value={value} onChange={onChange} />
         <FilterButton onClick={() => setFilterOpen(true)} />
-        <SurpriseMeButton />
+        <SurpriseMeButton onClick={onSurprise} disabled={surpriseDisabled} />
       </div>
       <FilterModel
         open={filterOpen}
