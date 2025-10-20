@@ -25,7 +25,7 @@ export const App = () => {
     {}
   );
 
-  // 🔹 Load restaurants once on startup
+  // Load restaurants once on startup
   useEffect(() => {
     const load = async () => {
       try {
