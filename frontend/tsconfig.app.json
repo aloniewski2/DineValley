@@ -23,11 +23,12 @@
       "noUncheckedSideEffectImports": true,
       "baseUrl": ".",
       "paths": {
-        "@/*": ["frontend/src/*"]
+        "@/*": ["src/*"]
       }
     },
     "include": [
-      "frontend/src"
-, "frontend/vite.config.ts"    ]
+      "src",
+      "vite.config.ts"
+    ]
   }
   
