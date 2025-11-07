@@ -1,5 +1,10 @@
 import { Restaurant, RestaurantDetails, RestaurantReview } from "../../types";
 
+const API_BASE =
+  typeof import.meta !== "undefined" && import.meta.env?.VITE_API_BASE_URL
+    ? import.meta.env.VITE_API_BASE_URL.replace(/\/$/, "")
+    : "http://localhost:5050";
+
 export interface BackendFilters {
   keyword?: string;
   minPrice?: number;
@@ -24,7 +29,7 @@ export async function fetchRestaurants(filters: BackendFilters): Promise<Restaur
   if (filters.pageToken) params.append("pageToken", filters.pageToken);
   if (filters.radiusMeters !== undefined) params.append("radius", filters.radiusMeters.toString());
 
-  const response = await fetch(`http://localhost:5050/restaurants?${params.toString()}`);
+  const response = await fetch(`${API_BASE}/restaurants?${params.toString()}`);
   if (!response.ok) throw new Error("Failed to fetch restaurants");
 
   const data = await response.json();
@@ -44,7 +49,7 @@ const mapReview = (review: any): RestaurantReview => ({
 });
 
 export async function fetchRestaurantDetails(id: string): Promise<RestaurantDetails> {
-  const response = await fetch(`http://localhost:5050/restaurant/${id}`);
+  const response = await fetch(`${API_BASE}/restaurant/${id}`);
   if (!response.ok) throw new Error("Failed to fetch restaurant details");
 
   const data = await response.json();

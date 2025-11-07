@@ -35,6 +35,29 @@ A modern restaurant recommendation web app built with TypeScript, React, and Tai
 npm run build # or yarn build
 ```
 
+## Environment Variables
+
+Create `backend/.env` with the following keys:
+
+```
+GOOGLE_PLACES_API_KEY=<your Google Places API key>
+GROQ_API_KEY=<your Groq API key>
+GROQ_MODEL=llama-3.1-8b-instant # optional, defaults to this model
+FRONTEND_ORIGINS=https://your-frontend-domain.com,https://your-site.netlify.app # optional, comma-separated
+```
+
+The Google key powers restaurant search/details, while the Groq key enables the AI concierge exposed via the `/chat` backend endpoint and the sidebar assistant in the UI.
+
+Once both keys are configured, run the backend and frontend servers. A floating concierge image appears in the lower-right corner of the app—click it to open the Groq-powered chatbox.
+
+For deployed builds, create `frontend/.env` (or configure host env vars) with:
+
+```
+VITE_API_BASE_URL=https://your-backend-domain.com
+```
+
+Local development falls back to `http://localhost:5050` if this variable is missing.
+
 ## Project Structure
 ```
 DineValley/
@@ -56,6 +79,7 @@ DineValley/
 - Tailwind CSS (styling)
 - Vite (build tool)
 - GitHub Actions (CI/CD)
+- Groq LLM API (AI concierge)
 
 ## Contributing
 1. Create feature branch from `testing` (make sure it is up to date with main)

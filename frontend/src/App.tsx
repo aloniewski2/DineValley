@@ -7,6 +7,7 @@ import { RestaurantDetailsPage } from "./sections/MainContent/RestaurantDetailsP
 import { Restaurant, RestaurantDetails } from "../types";
 import { fetchRestaurants, fetchRestaurantDetails } from "./api/restaurants";
 import { useLocalStorage } from "./hooks/useLocalStorage";
+import { FloatingConcierge } from "./components/FloatingConcierge";
 
 export type Page = "discover" | "recommendations" | "profile" | "restaurant-details";
 
@@ -342,6 +343,7 @@ export const App = () => {
     <div className="flex h-screen bg-gray-50">
       <Sidebar onNavigate={handleNavigate} currentPage={currentPage} />
       <div className="flex-1 flex flex-col overflow-y-auto">{renderPage()}</div>
+      <FloatingConcierge restaurants={restaurants} />
     </div>
   );
 };
