@@ -1,3 +1,4 @@
+
 # Logs
 logs
 *.log
@@ -7,9 +8,9 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+node_modules/
+dist/
+frontend/dist/
 *.local
 
 # Editor directories and files
@@ -22,3 +23,13 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment files
+.env
+backend/.env
+frontend/.env
+
+# Build artifacts (root or subprojects)
+*.tsbuildinfo
+backend/package-lock.json
+frontend/package-lock.json
