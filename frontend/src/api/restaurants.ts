@@ -3,7 +3,7 @@ import { Restaurant, RestaurantDetails, RestaurantReview } from "../../types";
 const API_BASE =
   typeof import.meta !== "undefined" && import.meta.env?.VITE_API_BASE_URL
     ? import.meta.env.VITE_API_BASE_URL.replace(/\/$/, "")
-    : "http://localhost:5050";
+    : "https://dinevalley-backend.onrender.com";
 
 export interface BackendFilters {
   keyword?: string;
