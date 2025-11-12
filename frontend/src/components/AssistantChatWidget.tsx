@@ -5,8 +5,17 @@ import {
   ChatHistoryItem,
   RestaurantContextPayload,
 } from "../api/assistant";
-import { Restaurant } from "../../types";
+import { fetchRestaurants } from "../api/restaurants";
+import { FilterOptions, Restaurant, createDefaultFilters } from "../../types";
 import waiterImage from "../assets/waiter.png";
+import {
+  KNOWN_CUISINES,
+  KNOWN_DIETARY_OPTIONS,
+  buildRestaurantQueryParams,
+  cloneFilterOptions,
+  filterRestaurantsClientSide,
+} from "../utils/restaurantFilters";
+import { useLocalStorage } from "../hooks/useLocalStorage";
 
 type Props = {
   restaurants: Restaurant[];
@@ -76,22 +85,110 @@ const STOP_WORDS = new Set([
   "options",
 ]);
 
-const tokensMatchKeyword = (token: string, keyword: string) => {
-  if (!token || !keyword) return false;
-  if (token === keyword) return true;
-  if (token.includes(keyword)) return true;
-  if (keyword.includes(token)) return true;
-  return false;
+const PRICE_WORD_MAP: Record<string, string[]> = {
+  cheap: ["$"],
+  budget: ["$"],
+  affordable: ["$", "$$"],
+  casual: ["$", "$$"],
+  moderate: ["$$"],
+  mid: ["$$"],
+  pricey: ["$$$", "$$$$"],
+  expensive: ["$$$", "$$$$"],
+  fancy: ["$$$", "$$$$"],
+  upscale: ["$$$", "$$$$"],
+  luxury: ["$$$", "$$$$"],
 };
 
-const setMatchesKeyword = (tokens: Set<string>, keyword: string) => {
-  for (const token of tokens) {
-    if (tokensMatchKeyword(token, keyword)) {
-      return true;
+const clampDistance = (value: number) => Math.min(Math.max(Math.round(value), 1), 30);
+
+type ParsedFiltersResult = {
+  filters: FilterOptions;
+  keywords: string[];
+  searchTerm: string;
+};
+
+const deriveFiltersFromQuestion = (
+  question: string,
+  previousFilters: FilterOptions
+): ParsedFiltersResult => {
+  const normalized = question.toLowerCase();
+  const tokens = tokenizeText(question);
+  const semanticTokens = tokens.filter((token) => !STOP_WORDS.has(token));
+  const filters = cloneFilterOptions(previousFilters);
+
+  const mentionedCuisines = KNOWN_CUISINES.filter((cuisine) =>
+    normalized.includes(cuisine.toLowerCase())
+  );
+  if (mentionedCuisines.length) {
+    filters.cuisines = Array.from(new Set(mentionedCuisines));
+  }
+
+  const dietaryMatches = KNOWN_DIETARY_OPTIONS.filter((option) =>
+    normalized.includes(option.toLowerCase())
+  );
+  if (dietaryMatches.length) {
+    filters.dietary = Array.from(new Set([...filters.dietary, ...dietaryMatches]));
+  }
+
+  const priceSymbols = question.match(/\${1,4}/g);
+  if (priceSymbols?.length) {
+    filters.priceRanges = Array.from(new Set(priceSymbols.map((symbol) => symbol.slice(0, 4))));
+  } else {
+    const priceWordEntry = Object.entries(PRICE_WORD_MAP).find(([word]) => normalized.includes(word));
+    if (priceWordEntry) {
+      filters.priceRanges = Array.from(new Set(priceWordEntry[1]));
+    }
+    const priceValueMatch = question.match(/(?:under|below|less than)\s*\$?\s*(\d+)/i);
+    if (priceValueMatch) {
+      const value = Number(priceValueMatch[1]);
+      if (!Number.isNaN(value)) {
+        if (value <= 20) filters.priceRanges = ["$"];
+        else if (value <= 40) filters.priceRanges = ["$", "$$"];
+        else if (value <= 70) filters.priceRanges = ["$$", "$$$"];
+        else filters.priceRanges = ["$$$", "$$$$"];
+      }
     }
   }
-  return false;
+
+  const distanceMatch = question.match(/(?:within|under|less than)\s*(\d+)\s*(?:miles?|mi)\b/i);
+  if (distanceMatch) {
+    const miles = Number(distanceMatch[1]);
+    if (!Number.isNaN(miles)) {
+      filters.distanceMiles = clampDistance(miles);
+    }
+  } else if (/\bnear me\b|\bnearby\b/.test(normalized)) {
+    filters.distanceMiles = Math.min(filters.distanceMiles, 5);
+  }
+
+  const ratingMatch = question.match(/(\d(?:\.\d)?)\s*(?:stars?|rating)/i);
+  if (ratingMatch) {
+    const rating = Number(ratingMatch[1]);
+    if (!Number.isNaN(rating)) {
+      filters.minRating = Math.min(Math.max(rating, 0), 5);
+    }
+  } else if (/\bhighly rated\b|\bhigher rated\b|\bfive star\b/.test(normalized)) {
+    filters.minRating = Math.max(filters.minRating, 4.5);
+  }
+
+  if (/\bopen now\b|\bcurrently open\b/.test(normalized)) {
+    filters.openNow = true;
+  }
+
+  const keywordSet = new Set<string>();
+  [...filters.cuisines, ...filters.dietary].forEach((item) => keywordSet.add(item.toLowerCase()));
+  semanticTokens.slice(0, 5).forEach((token) => keywordSet.add(token));
+
+  const searchTerm = semanticTokens.join(" ") || filters.cuisines[0] || question;
+
+  return {
+    filters,
+    keywords: Array.from(keywordSet).slice(0, 8),
+    searchTerm,
+  };
 };
+
+const toContextPayloadList = (items: Restaurant[]): RestaurantContextPayload[] =>
+  items.slice(0, 8).map(toContextPayload);
 
 const toContextPayload = (restaurant: Restaurant): RestaurantContextPayload => ({
   id: restaurant.id,
@@ -146,142 +243,20 @@ export const AssistantChatWidget: React.FC<Props> = ({ restaurants, onSelectRest
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [chatFilters, setChatFilters] = useLocalStorage<FilterOptions>(
+    "assistantChatFilters",
+    createDefaultFilters()
+  );
+  const [fetchedRestaurants, setFetchedRestaurants] = useState<Restaurant[]>([]);
+
+  const effectiveRestaurants = fetchedRestaurants.length ? fetchedRestaurants : restaurants;
 
   const restaurantLookup = useMemo(() => {
     const map = new Map<string, Restaurant>();
     restaurants.forEach((restaurant) => map.set(restaurant.id, restaurant));
+    fetchedRestaurants.forEach((restaurant) => map.set(restaurant.id, restaurant));
     return map;
-  }, [restaurants]);
-
-  const restaurantTokens = useMemo(() => {
-    const map = new Map<string, Set<string>>();
-    restaurants.forEach((restaurant) => {
-      const tokens = new Set<string>();
-      tokenizeText(restaurant.name).forEach((token) => tokens.add(token));
-      (restaurant.types ?? []).forEach((type) =>
-        tokenizeText(type.replace(/_/g, " ")).forEach((token) => tokens.add(token))
-      );
-      (restaurant.dietary ?? []).forEach((dietary) =>
-        tokenizeText(dietary).forEach((token) => tokens.add(token))
-      );
-      map.set(restaurant.id, tokens);
-    });
-    return map;
-  }, [restaurants]);
-
-  const restaurantSearchBlobs = useMemo(() => {
-    const map = new Map<string, string>();
-    restaurants.forEach((restaurant) => {
-      const blob = [
-        restaurant.name,
-        ...(restaurant.types ?? []).map((type) => type.replace(/_/g, " ")),
-        ...(restaurant.dietary ?? []),
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      map.set(restaurant.id, blob);
-    });
-    return map;
-  }, [restaurants]);
-
-  const buildContextPayload = useCallback(
-    (question: string) => {
-      if (!restaurants.length) {
-        return { context: [], keywords: [] as string[] };
-      }
-
-      const questionTokens = tokenizeText(question);
-      if (!questionTokens.length) {
-        const top = [...restaurants]
-          .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
-          .slice(0, 6)
-          .map(toContextPayload);
-        return { context: top, keywords: [] as string[] };
-      }
-
-      const filteredTokens = questionTokens.filter((token) => !STOP_WORDS.has(token));
-      const tokensForMatching = filteredTokens.length ? filteredTokens : questionTokens;
-      const matchedKeywords = new Set<string>();
-
-      const scored = restaurants.map((restaurant) => {
-        const tokens = restaurantTokens.get(restaurant.id) ?? new Set<string>();
-        let score = 0;
-        tokensForMatching.forEach((keyword) => {
-          if (setMatchesKeyword(tokens, keyword)) {
-            score += 1;
-            matchedKeywords.add(keyword);
-          }
-        });
-        return { restaurant, score };
-      });
-
-      const matches = scored.filter((item) => item.score > 0);
-      const fallback = scored.filter((item) => item.score === 0);
-
-      matches.sort((a, b) => {
-        if (b.score !== a.score) {
-          return b.score - a.score;
-        }
-        return (b.restaurant.rating ?? 0) - (a.restaurant.rating ?? 0);
-      });
-
-      fallback.sort((a, b) => (b.restaurant.rating ?? 0) - (a.restaurant.rating ?? 0));
-
-      const keywords =
-        matchedKeywords.size > 0
-          ? Array.from(matchedKeywords)
-          : filteredTokens.length
-            ? filteredTokens
-            : questionTokens.filter((token) => !STOP_WORDS.has(token));
-
-      const hasKeywordFilters = keywords.length > 0;
-      const maxResults = hasKeywordFilters ? 8 : 8;
-
-      let selected = [] as typeof matches;
-
-      if (hasKeywordFilters) {
-        selected = matches.filter((item) => {
-          if (matchedKeywords.size > 0) {
-            return true;
-          }
-          const tokens = restaurantTokens.get(item.restaurant.id) ?? new Set<string>();
-          return keywords.some((keyword) => setMatchesKeyword(tokens, keyword));
-        });
-
-        if (selected.length === 0) {
-          const blobMatches = [...matches, ...fallback].filter((item) => {
-            const blob = restaurantSearchBlobs.get(item.restaurant.id) ?? "";
-            return keywords.some((keyword) => blob.includes(keyword));
-          });
-          selected = blobMatches.slice(0, maxResults);
-        } else {
-          selected = selected.slice(0, maxResults);
-        }
-
-        if (selected.length > 0 && selected.length < Math.min(3, maxResults)) {
-          const needed = Math.min(3, maxResults) - selected.length;
-          const selectedIds = new Set(selected.map((item) => item.restaurant.id));
-          const extras = fallback
-            .filter((item) => {
-              if (selectedIds.has(item.restaurant.id)) return false;
-              const blob = restaurantSearchBlobs.get(item.restaurant.id) ?? "";
-              return keywords.some((keyword) => blob.includes(keyword));
-            })
-            .slice(0, needed);
-          selected = [...selected, ...extras];
-        }
-      } else {
-        selected = [...matches, ...fallback].slice(0, maxResults);
-      }
-
-      return {
-        context: selected.map(({ restaurant }) => toContextPayload(restaurant)),
-        keywords,
-      };
-    },
-    [restaurants, restaurantTokens, restaurantSearchBlobs]
-  );
+  }, [restaurants, fetchedRestaurants]);
 
   useEffect(() => {
     if (!isOpen || !scrollRef.current) return;
@@ -297,18 +272,42 @@ export const AssistantChatWidget: React.FC<Props> = ({ restaurants, onSelectRest
       }
 
       const userMessage: ChatMessage = { role: "user", content: question };
-      const { context, keywords } = buildContextPayload(question);
       const historyForApi: ChatHistoryItem[] = [...messages, userMessage].map(({ role, content }) => ({
         role,
         content,
       }));
+
+      const parsed = deriveFiltersFromQuestion(question, chatFilters);
+      setChatFilters(() => cloneFilterOptions(parsed.filters));
+
+      let contextSource = effectiveRestaurants;
+
       setMessages((prev) => [...prev, userMessage]);
       setInput("");
       setIsSending(true);
       setError(null);
 
       try {
-        const response = await askAssistant(question, historyForApi, context, { keywords });
+        const queryParams = buildRestaurantQueryParams(parsed.filters, parsed.searchTerm);
+        const data = await fetchRestaurants(queryParams);
+        const filtered = filterRestaurantsClientSide(data.results, parsed.filters);
+        if (filtered.length) {
+          contextSource = filtered;
+          setFetchedRestaurants(filtered);
+        } else if (data.results.length) {
+          contextSource = data.results;
+          setFetchedRestaurants(data.results);
+        }
+      } catch (contextError) {
+        console.warn("Assistant context fetch failed", contextError);
+      }
+
+      const context = toContextPayloadList(contextSource.length ? contextSource : restaurants);
+
+      try {
+        const response = await askAssistant(question, historyForApi, context, {
+          keywords: parsed.keywords,
+        });
         const recommendations = extractRecommendations(response.answer, context);
         setMessages((prev) => [
           ...prev,
@@ -329,7 +328,7 @@ export const AssistantChatWidget: React.FC<Props> = ({ restaurants, onSelectRest
         setIsSending(false);
       }
     },
-    [buildContextPayload, input, isSending, messages]
+    [chatFilters, effectiveRestaurants, input, isSending, messages, restaurants, setChatFilters]
   );
 
   const handleRecommendationSelect = useCallback(

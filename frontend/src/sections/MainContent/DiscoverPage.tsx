@@ -5,6 +5,7 @@ import { SearchSection } from "../SearchSection/SearchSection";
 import { TrendingSection } from "../TrendingSection/TrendingSection";
 import { fetchRestaurants } from "../../api/restaurants";
 import { StatusBanner } from "../../components/StatusBanner";
+import { buildRestaurantQueryParams, filterRestaurantsClientSide } from "../../utils/restaurantFilters";
 
 type Props = {
   onSelectRestaurant: (restaurant: Restaurant) => void;
@@ -68,70 +69,7 @@ export const DiscoverPage = ({
     });
   }, []);
 
-  const PRICE_RANGE_TO_LEVEL: Record<string, number> = useMemo(
-    () => ({
-      "$": 1,
-      "$$": 2,
-      "$$$": 3,
-      "$$$$": 4,
-    }),
-    []
-  );
-
-  const requestParams = useMemo(() => {
-    const trimmedSearch = search.trim();
-    const keywordParts: string[] = [];
-
-    if (trimmedSearch) keywordParts.push(trimmedSearch);
-    if (filters.cuisines.length) keywordParts.push(filters.cuisines.join(" "));
-
-    const keyword = keywordParts.join(" ").trim() || "restaurant";
-
-    const priceSelections = filters.priceRanges
-      .map((range) => PRICE_RANGE_TO_LEVEL[range])
-      .filter((level): level is number => typeof level === "number");
-
-    const minPrice = priceSelections.length ? Math.min(...priceSelections) : undefined;
-    const maxPrice = priceSelections.length ? Math.max(...priceSelections) : undefined;
-
-    const radiusMeters = Math.round(Math.max(1, filters.distanceMiles) * 1609.34);
-
-    return {
-      keyword,
-      minPrice,
-      maxPrice,
-      openNow: filters.openNow,
-      radiusMeters,
-    };
-  }, [
-    search,
-    filters.cuisines,
-    filters.priceRanges,
-    filters.openNow,
-    filters.distanceMiles,
-    PRICE_RANGE_TO_LEVEL,
-  ]);
-
-  const applyClientFilters = useCallback(
-    (items: Restaurant[]) => {
-      const normalize = (value: string) => value.replace(/_/g, " ").toLowerCase();
-
-      const dietaryFilters = filters.dietary.map((item) => normalize(item));
-      const minRating = filters.minRating;
-
-      return items.filter((restaurant) => {
-        const dietary = (restaurant.dietary ?? []).map(normalize);
-
-        const matchesRating = (restaurant.rating ?? 0) >= minRating;
-        const matchesDietary =
-          dietaryFilters.length === 0 ||
-          (dietary.length > 0 && dietaryFilters.every((option) => dietary.includes(option)));
-
-        return matchesRating && matchesDietary;
-      });
-    },
-    [filters.dietary, filters.minRating]
-  );
+  const requestParams = useMemo(() => buildRestaurantQueryParams(filters, search), [filters, search]);
 
   // 🔹 Load first page
   useEffect(() => {
@@ -140,7 +78,7 @@ export const DiscoverPage = ({
       setError(null);
       try {
         const data = await fetchRestaurants(requestParams);
-        const filtered = applyClientFilters(data.results);
+        const filtered = filterRestaurantsClientSide(data.results, filters);
         setRestaurants(filtered);
         setNextPageToken(data.nextPageToken || null);
         setResultsVersion((prev) => prev + 1);
@@ -152,7 +90,7 @@ export const DiscoverPage = ({
       }
     };
     load();
-  }, [requestParams, applyClientFilters, refreshToken]);
+  }, [filters, requestParams, refreshToken]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -181,7 +119,7 @@ export const DiscoverPage = ({
     setLoading(true);
     try {
       const data = await fetchRestaurants({ ...requestParams, pageToken: nextPageToken });
-      const filtered = applyClientFilters(data.results);
+      const filtered = filterRestaurantsClientSide(data.results, filters);
       setRestaurants((prev) => [...prev, ...filtered]);
       setNextPageToken(data.nextPageToken || null);
       setError(null);
@@ -193,7 +131,7 @@ export const DiscoverPage = ({
     } finally {
       setLoading(false);
     }
-  }, [nextPageToken, loading, requestParams, applyClientFilters]);
+  }, [nextPageToken, loading, requestParams, filters]);
 
   // 🔹 Infinite scroll listener
   useEffect(() => {
