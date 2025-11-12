@@ -7,6 +7,7 @@ import { RestaurantDetailsPage } from "./sections/MainContent/RestaurantDetailsP
 import { Restaurant, RestaurantDetails } from "../types";
 import { fetchRestaurants, fetchRestaurantDetails } from "./api/restaurants";
 import { useLocalStorage } from "./hooks/useLocalStorage";
+import { AssistantChatWidget } from "./components/AssistantChatWidget";
 
 export type Page = "discover" | "recommendations" | "profile" | "restaurant-details";
 
@@ -339,9 +340,12 @@ export const App = () => {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      <Sidebar onNavigate={handleNavigate} currentPage={currentPage} />
-      <div className="flex-1 flex flex-col overflow-y-auto">{renderPage()}</div>
-    </div>
+    <>
+      <div className="flex h-screen bg-gray-50">
+        <Sidebar onNavigate={handleNavigate} currentPage={currentPage} />
+        <div className="flex-1 flex flex-col overflow-y-auto">{renderPage()}</div>
+      </div>
+      <AssistantChatWidget restaurants={restaurants} onSelectRestaurant={handleSelectRestaurant} />
+    </>
   );
 };

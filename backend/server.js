@@ -11,6 +11,7 @@ const DEFAULT_ALLOWED_ORIGINS = [
   "https://dinevalley-frontend.onrender.com",
   "https://dinevalley.netlify.app",
   "http://localhost:5173",
+  "http://localhost:5174",
 ];
 
 const FRONTEND_ORIGINS = (process.env.FRONTEND_ORIGINS || "")
@@ -81,6 +82,11 @@ const describeRestaurant = (restaurant, index) => {
           .map((type) => type.replace(/_/g, " "))
           .join(", ")}`
       : null;
+  const dietary =
+    Array.isArray(restaurant?.dietary) && restaurant.dietary.length
+      ? `Dietary: ${restaurant.dietary.slice(0, 5).join(", ")}`
+      : null;
+  const favorite = restaurant?.isFavorite ? "⭐ Favorite" : null;
 
   const parts = [`${index + 1}. ${name}`];
   if (rating) parts.push(rating);
@@ -88,6 +94,8 @@ const describeRestaurant = (restaurant, index) => {
   if (priceLevel) parts.push(priceLevel);
   if (address) parts.push(address);
   if (tags) parts.push(tags);
+  if (dietary) parts.push(dietary);
+  if (favorite) parts.push(favorite);
 
   return parts.join(" | ");
 };
@@ -325,7 +333,7 @@ app.post("/chat", async (req, res) => {
     return res.status(503).json({ error: "GROQ_API_KEY is not configured on the server" });
   }
 
-  const { question, history, restaurants } = req.body ?? {};
+  const { question, history, restaurants, filters } = req.body ?? {};
 
   if (!question || typeof question !== "string") {
     logChat("Rejected request: missing question");
@@ -368,27 +376,76 @@ app.post("/chat", async (req, res) => {
           types: Array.isArray(restaurant.types)
             ? restaurant.types.filter((type) => typeof type === "string")
             : [],
+          dietary: Array.isArray(restaurant.dietary)
+            ? restaurant.dietary.filter((item) => typeof item === "string")
+            : [],
+          isFavorite: restaurant.isFavorite === true,
         }))
+    : [];
+
+  const filterKeywords = Array.isArray(filters?.keywords)
+    ? filters.keywords
+        .map((keyword) => (typeof keyword === "string" ? keyword.toLowerCase().trim() : null))
+        .filter(Boolean)
     : [];
 
   logChat("Sanitized payload", {
     sanitizedHistoryCount: sanitizedHistory.length,
     sanitizedRestaurantCount: sanitizedRestaurants.length,
+    filterKeywords,
   });
 
-  const restaurantContext = buildRestaurantContext(sanitizedRestaurants);
+  const getRestaurantSearchText = (restaurant) =>
+    [
+      restaurant?.name,
+      ...(restaurant?.types ?? []).map((type) => type.replace(/_/g, " ")),
+      ...(restaurant?.dietary ?? []),
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+  const filteredRestaurants =
+    filterKeywords.length === 0
+      ? sanitizedRestaurants
+      : sanitizedRestaurants.filter((restaurant) => {
+          const haystack = getRestaurantSearchText(restaurant);
+          return filterKeywords.some((keyword) => haystack.includes(keyword));
+        });
+
+  const restaurantsForPrompt =
+    filterKeywords.length > 0
+      ? filteredRestaurants.length > 0
+        ? filteredRestaurants
+        : []
+      : sanitizedRestaurants;
+
+  const restaurantContext = buildRestaurantContext(restaurantsForPrompt);
 
   const systemPrompt = [
     "You are the AI concierge for Dine Valley, a Lehigh Valley restaurant discovery web app.",
     "Provide concise, friendly answers that either explain app features or reference the supplied restaurant context.",
     "When the question is about dining, only rely on the provided restaurant list. If information is missing, say so and suggest how to find it in the app.",
+    "Never recommend or mention restaurants that are not explicitly included in the provided context; if none match the user’s request, say so plainly.",
+    "If one or more restaurants in the context satisfy the user’s request, surface up to three distinct options (ordered by relevance) before you suggest using filters or searching elsewhere.",
+    "Only suggest using filters or other cuisines when zero restaurants in context match the requested cuisine or criteria.",
+    "Explicitly weave in each restaurant's cuisines/types, dietary tags, price level, and favorite status when relevant so users understand how filters impact the results.",
     "If the question is about the product itself, highlight smart filters, favorites, recent views, and Google Places powered data.",
+    "Answer in no more than two sentences, focusing only on essential information.",
   ].join(" ");
 
   const userContent = [
     `User question: ${question.trim()}`,
     restaurantContext ? `Restaurant context:\n${restaurantContext}` : null,
-    "If the user asks for suggestions, reference the most relevant restaurants from the list.",
+    filterKeywords.length > 0 && restaurantsForPrompt.length > 0
+      ? `Only recommend places matching: ${filterKeywords.join(", ")}.`
+      : null,
+    filterKeywords.length > 0 && restaurantsForPrompt.length === 0
+      ? `No restaurants in the current dataset match: ${filterKeywords.join(", ")}. Explain this limitation, suggest adjusting filters, and do not invent places.`
+      : null,
+    filterKeywords.length > 0
+      ? "Do not mention any other cuisine or restaurant category unless the user explicitly asks for something else."
+      : "If the user asks for suggestions, reference the most relevant restaurants from the list.",
   ]
     .filter(Boolean)
     .join("\n\n");

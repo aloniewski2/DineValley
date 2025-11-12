@@ -12,17 +12,31 @@ export type ChatHistoryItem = {
 
 export type RestaurantContextPayload = Pick<
   Restaurant,
-  "id" | "name" | "rating" | "reviewCount" | "address" | "priceLevel" | "types"
+  | "id"
+  | "name"
+  | "rating"
+  | "reviewCount"
+  | "address"
+  | "priceLevel"
+  | "types"
+  | "dietary"
+  | "isFavorite"
+  | "imageUrl"
 >;
 
 export interface AssistantResponse {
   answer: string;
 }
 
+export interface AssistantFiltersPayload {
+  keywords?: string[];
+}
+
 export const askAssistant = async (
   question: string,
   history: ChatHistoryItem[] = [],
-  restaurants: RestaurantContextPayload[] = []
+  restaurants: RestaurantContextPayload[] = [],
+  filters?: AssistantFiltersPayload
 ): Promise<AssistantResponse> => {
   const payload: Record<string, unknown> = { question: question.trim() };
 
@@ -32,6 +46,12 @@ export const askAssistant = async (
 
   if (restaurants.length) {
     payload.restaurants = restaurants;
+  }
+
+  if (filters && (filters.keywords?.length ?? 0) > 0) {
+    payload.filters = {
+      keywords: filters.keywords?.slice(0, 6),
+    };
   }
 
   const startedAt = performance.now?.() ?? Date.now();

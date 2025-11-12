@@ -1,0 +1,491 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Bot, Loader2, Send, X } from "lucide-react";
+import {
+  askAssistant,
+  ChatHistoryItem,
+  RestaurantContextPayload,
+} from "../api/assistant";
+import { Restaurant } from "../../types";
+import waiterImage from "../assets/waiter.png";
+
+type Props = {
+  restaurants: Restaurant[];
+  onSelectRestaurant?: (restaurant: Restaurant) => void;
+};
+
+const FALLBACK_IMAGE = "https://source.unsplash.com/160x160/?restaurant,food";
+
+type ChatMessage = ChatHistoryItem & {
+  recommendations?: RestaurantContextPayload[];
+};
+
+const INITIAL_MESSAGE: ChatMessage = {
+  role: "assistant",
+  content:
+    "Hi! I’m your DineValley concierge. Ask me about finding the perfect spot, how filters work, or what’s trending nearby.",
+};
+
+const normalize = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const tokenizeText = (value?: string | null) => {
+  if (!value) return [];
+  const normalized = normalize(value);
+  if (!normalized) return [];
+  return normalized
+    .split(" ")
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 3);
+};
+
+const STOP_WORDS = new Set([
+  "restaurant",
+  "restaurants",
+  "food",
+  "foods",
+  "place",
+  "places",
+  "spot",
+  "spots",
+  "eat",
+  "eats",
+  "eating",
+  "dining",
+  "dinner",
+  "lunch",
+  "breakfast",
+  "cuisine",
+  "cuisines",
+  "recommendation",
+  "recommendations",
+  "find",
+  "finding",
+  "looking",
+  "nearby",
+  "around",
+  "good",
+  "best",
+  "please",
+  "thanks",
+  "another",
+  "option",
+  "options",
+]);
+
+const tokensMatchKeyword = (token: string, keyword: string) => {
+  if (!token || !keyword) return false;
+  if (token === keyword) return true;
+  if (token.includes(keyword)) return true;
+  if (keyword.includes(token)) return true;
+  return false;
+};
+
+const setMatchesKeyword = (tokens: Set<string>, keyword: string) => {
+  for (const token of tokens) {
+    if (tokensMatchKeyword(token, keyword)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const toContextPayload = (restaurant: Restaurant): RestaurantContextPayload => ({
+  id: restaurant.id,
+  name: restaurant.name,
+  rating: restaurant.rating,
+  reviewCount: restaurant.reviewCount,
+  address: restaurant.address,
+  priceLevel: restaurant.priceLevel,
+  types: Array.isArray(restaurant.types) ? restaurant.types.slice(0, 6) : [],
+  dietary: Array.isArray(restaurant.dietary) ? restaurant.dietary.slice(0, 6) : undefined,
+  isFavorite: Boolean(restaurant.isFavorite),
+  imageUrl: restaurant.imageUrl,
+});
+
+const extractRecommendations = (
+  answer: string,
+  candidates: RestaurantContextPayload[]
+): RestaurantContextPayload[] => {
+  const normalizedAnswer = normalize(answer);
+  if (!normalizedAnswer) return [];
+
+  const matches = candidates.filter((restaurant) => {
+    if (!restaurant?.name) return false;
+    const normalizedName = normalize(restaurant.name);
+    if (!normalizedName) return false;
+    return normalizedAnswer.includes(normalizedName);
+  });
+
+  const unique: RestaurantContextPayload[] = [];
+  const seen = new Set<string>();
+
+  matches.forEach((restaurant) => {
+    if (restaurant.id && !seen.has(restaurant.id)) {
+      seen.add(restaurant.id);
+      unique.push(restaurant);
+    }
+  });
+
+  return unique;
+};
+
+const formatPriceLevel = (level?: number | null) => {
+  if (!Number.isFinite(level)) return null;
+  const value = Math.max(1, Math.min(4, Math.round(level as number)));
+  return "$".repeat(value);
+};
+
+export const AssistantChatWidget: React.FC<Props> = ({ restaurants, onSelectRestaurant }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [input, setInput] = useState("");
+  const [messages, setMessages] = useState<ChatMessage[]>([INITIAL_MESSAGE]);
+  const [isSending, setIsSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  const restaurantLookup = useMemo(() => {
+    const map = new Map<string, Restaurant>();
+    restaurants.forEach((restaurant) => map.set(restaurant.id, restaurant));
+    return map;
+  }, [restaurants]);
+
+  const restaurantTokens = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    restaurants.forEach((restaurant) => {
+      const tokens = new Set<string>();
+      tokenizeText(restaurant.name).forEach((token) => tokens.add(token));
+      (restaurant.types ?? []).forEach((type) =>
+        tokenizeText(type.replace(/_/g, " ")).forEach((token) => tokens.add(token))
+      );
+      (restaurant.dietary ?? []).forEach((dietary) =>
+        tokenizeText(dietary).forEach((token) => tokens.add(token))
+      );
+      map.set(restaurant.id, tokens);
+    });
+    return map;
+  }, [restaurants]);
+
+  const restaurantSearchBlobs = useMemo(() => {
+    const map = new Map<string, string>();
+    restaurants.forEach((restaurant) => {
+      const blob = [
+        restaurant.name,
+        ...(restaurant.types ?? []).map((type) => type.replace(/_/g, " ")),
+        ...(restaurant.dietary ?? []),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      map.set(restaurant.id, blob);
+    });
+    return map;
+  }, [restaurants]);
+
+  const buildContextPayload = useCallback(
+    (question: string) => {
+      if (!restaurants.length) {
+        return { context: [], keywords: [] as string[] };
+      }
+
+      const questionTokens = tokenizeText(question);
+      if (!questionTokens.length) {
+        const top = [...restaurants]
+          .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
+          .slice(0, 6)
+          .map(toContextPayload);
+        return { context: top, keywords: [] as string[] };
+      }
+
+      const filteredTokens = questionTokens.filter((token) => !STOP_WORDS.has(token));
+      const tokensForMatching = filteredTokens.length ? filteredTokens : questionTokens;
+      const matchedKeywords = new Set<string>();
+
+      const scored = restaurants.map((restaurant) => {
+        const tokens = restaurantTokens.get(restaurant.id) ?? new Set<string>();
+        let score = 0;
+        tokensForMatching.forEach((keyword) => {
+          if (setMatchesKeyword(tokens, keyword)) {
+            score += 1;
+            matchedKeywords.add(keyword);
+          }
+        });
+        return { restaurant, score };
+      });
+
+      const matches = scored.filter((item) => item.score > 0);
+      const fallback = scored.filter((item) => item.score === 0);
+
+      matches.sort((a, b) => {
+        if (b.score !== a.score) {
+          return b.score - a.score;
+        }
+        return (b.restaurant.rating ?? 0) - (a.restaurant.rating ?? 0);
+      });
+
+      fallback.sort((a, b) => (b.restaurant.rating ?? 0) - (a.restaurant.rating ?? 0));
+
+      const keywords =
+        matchedKeywords.size > 0
+          ? Array.from(matchedKeywords)
+          : filteredTokens.length
+            ? filteredTokens
+            : questionTokens.filter((token) => !STOP_WORDS.has(token));
+
+      const hasKeywordFilters = keywords.length > 0;
+      const maxResults = hasKeywordFilters ? 8 : 8;
+
+      let selected = [] as typeof matches;
+
+      if (hasKeywordFilters) {
+        selected = matches.filter((item) => {
+          if (matchedKeywords.size > 0) {
+            return true;
+          }
+          const tokens = restaurantTokens.get(item.restaurant.id) ?? new Set<string>();
+          return keywords.some((keyword) => setMatchesKeyword(tokens, keyword));
+        });
+
+        if (selected.length === 0) {
+          const blobMatches = [...matches, ...fallback].filter((item) => {
+            const blob = restaurantSearchBlobs.get(item.restaurant.id) ?? "";
+            return keywords.some((keyword) => blob.includes(keyword));
+          });
+          selected = blobMatches.slice(0, maxResults);
+        } else {
+          selected = selected.slice(0, maxResults);
+        }
+
+        if (selected.length > 0 && selected.length < Math.min(3, maxResults)) {
+          const needed = Math.min(3, maxResults) - selected.length;
+          const selectedIds = new Set(selected.map((item) => item.restaurant.id));
+          const extras = fallback
+            .filter((item) => {
+              if (selectedIds.has(item.restaurant.id)) return false;
+              const blob = restaurantSearchBlobs.get(item.restaurant.id) ?? "";
+              return keywords.some((keyword) => blob.includes(keyword));
+            })
+            .slice(0, needed);
+          selected = [...selected, ...extras];
+        }
+      } else {
+        selected = [...matches, ...fallback].slice(0, maxResults);
+      }
+
+      return {
+        context: selected.map(({ restaurant }) => toContextPayload(restaurant)),
+        keywords,
+      };
+    },
+    [restaurants, restaurantTokens, restaurantSearchBlobs]
+  );
+
+  useEffect(() => {
+    if (!isOpen || !scrollRef.current) return;
+    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [messages, isOpen]);
+
+  const handleSend = useCallback(
+    async (event?: React.FormEvent) => {
+      event?.preventDefault();
+      const question = input.trim();
+      if (!question || isSending) {
+        return;
+      }
+
+      const userMessage: ChatMessage = { role: "user", content: question };
+      const { context, keywords } = buildContextPayload(question);
+      const historyForApi: ChatHistoryItem[] = [...messages, userMessage].map(({ role, content }) => ({
+        role,
+        content,
+      }));
+      setMessages((prev) => [...prev, userMessage]);
+      setInput("");
+      setIsSending(true);
+      setError(null);
+
+      try {
+        const response = await askAssistant(question, historyForApi, context, { keywords });
+        const recommendations = extractRecommendations(response.answer, context);
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: response.answer,
+            recommendations: recommendations.length ? recommendations : undefined,
+          },
+        ]);
+      } catch (assistantError) {
+        console.error("Assistant chat failed", assistantError);
+        const fallbackMessage =
+          assistantError instanceof Error
+            ? assistantError.message
+            : "The assistant is unavailable right now.";
+        setError(fallbackMessage);
+      } finally {
+        setIsSending(false);
+      }
+    },
+    [buildContextPayload, input, isSending, messages]
+  );
+
+  const handleRecommendationSelect = useCallback(
+    (restaurantId: string) => {
+      if (!onSelectRestaurant) return;
+      const restaurant = restaurantLookup.get(restaurantId);
+      if (restaurant) {
+        onSelectRestaurant(restaurant);
+        setIsOpen(false);
+      }
+    },
+    [onSelectRestaurant, restaurantLookup]
+  );
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      handleSend();
+    }
+  };
+
+  return (
+    <div className="fixed bottom-6 right-6 z-50">
+      {isOpen ? (
+        <div className="flex h-[32rem] w-80 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+          <header className="flex items-center justify-between border-b px-4 py-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+              <span className="rounded-full bg-indigo-50 p-1.5 text-indigo-600">
+                <Bot size={18} />
+              </span>
+              DineValley AI
+            </div>
+            <button
+              type="button"
+              className="text-gray-500 transition hover:text-gray-700"
+              onClick={() => setIsOpen(false)}
+            >
+              <X size={18} />
+            </button>
+          </header>
+          <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto bg-gray-50 px-4 py-3 text-sm">
+            {messages.map((message, index) => (
+              <div key={`${message.role}-${index}`} className="space-y-2">
+                <div className={`flex ${message.role === "assistant" ? "justify-start" : "justify-end"}`}>
+                  <div
+                    className={`max-w-[85%] rounded-2xl px-3 py-2 ${
+                      message.role === "assistant"
+                        ? "bg-white text-gray-800 shadow-sm"
+                        : "bg-indigo-600 text-white shadow"
+                    }`}
+                  >
+                    {message.content}
+                  </div>
+                </div>
+                {message.recommendations && message.recommendations.length > 0 && (
+                  <div className="flex flex-col gap-2">
+                    {message.recommendations.map((recommendation) => {
+                      const full = restaurantLookup.get(recommendation.id);
+                      const image = full?.imageUrl || recommendation.imageUrl || FALLBACK_IMAGE;
+                      const price = formatPriceLevel(full?.priceLevel ?? recommendation.priceLevel);
+                      const dietary = full?.dietary ?? recommendation.dietary;
+                      const favorite = full?.isFavorite ?? recommendation.isFavorite;
+
+                      return (
+                        <button
+                          type="button"
+                          key={recommendation.id}
+                          onClick={() => handleRecommendationSelect(recommendation.id)}
+                          className="flex gap-3 rounded-2xl border border-gray-200 bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                        >
+                          <img
+                            src={image}
+                            alt={full?.name || recommendation.name}
+                            className="h-16 w-16 flex-shrink-0 rounded-xl object-cover"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-sm font-semibold text-gray-900">
+                                {full?.name || recommendation.name}
+                              </p>
+                              {favorite && <span className="text-xs text-amber-500">★ Favorite</span>}
+                            </div>
+                            <p className="text-xs text-gray-500 truncate">
+                              {full?.address || recommendation.address}
+                            </p>
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-600">
+                              {typeof (full?.rating ?? recommendation.rating) === "number" && (
+                                <span>Rating {(full?.rating ?? recommendation.rating)?.toFixed(1)}</span>
+                              )}
+                              {typeof (full?.reviewCount ?? recommendation.reviewCount) === "number" && (
+                                <span>· {(full?.reviewCount ?? recommendation.reviewCount)} reviews</span>
+                              )}
+                              {price && <span>· {price}</span>}
+                            </div>
+                            {dietary && dietary.length > 0 && (
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {dietary.slice(0, 3).map((tag) => (
+                                  <span
+                                    key={tag}
+                                    className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-600"
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ))}
+            {isSending && (
+              <div className="flex items-center gap-2 text-gray-500">
+                <Loader2 size={16} className="animate-spin" />
+                Thinking…
+              </div>
+            )}
+          </div>
+          <div className="border-t p-3">
+            {error && <p className="mb-2 text-xs text-red-600">{error}</p>}
+            <form onSubmit={handleSend} className="flex flex-col gap-2">
+              <textarea
+                rows={3}
+                placeholder="Ask about cuisines, filters, or recommendations..."
+                className="w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                onKeyDown={handleKeyDown}
+                disabled={isSending}
+              />
+              <button
+                type="submit"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-300"
+                disabled={!input.trim() || isSending}
+              >
+                <Send size={16} />
+                {isSending ? "Sending..." : "Send"}
+              </button>
+            </form>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setIsOpen(true)}
+          className="inline-flex items-center gap-3 rounded-full border border-transparent bg-white px-4 py-3 text-sm font-semibold text-gray-900 shadow-xl transition hover:-translate-y-0.5 hover:border-indigo-100 hover:shadow-2xl"
+        >
+          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-50">
+            <img src={waiterImage} alt="Chat with your waiter" className="h-8 w-8 rounded-full object-cover" />
+          </span>
+          Ask DineValley AI
+        </button>
+      )}
+    </div>
+  );
+};
