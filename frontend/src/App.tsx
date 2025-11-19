@@ -4,7 +4,7 @@ import { DiscoverPage } from "./sections/MainContent/DiscoverPage";
 import { RecommendationsPage } from "./sections/MainContent/RecommendationsPage";
 import { ProfilePage } from "./sections/MainContent/ProfilePage";
 import { RestaurantDetailsPage } from "./sections/MainContent/RestaurantDetailsPage";
-import { Restaurant, RestaurantDetails } from "../types";
+import { Restaurant, RestaurantDetails, VisitRecord, VisitSnapshot, VisitStatsMap } from "../types";
 import { fetchRestaurants, fetchRestaurantDetails } from "./api/restaurants";
 import { useLocalStorage } from "./hooks/useLocalStorage";
 import { AssistantChatWidget } from "./components/AssistantChatWidget";
@@ -24,6 +24,85 @@ export const App = () => {
   const [favoriteSnapshots, setFavoriteSnapshots] = useLocalStorage<Record<string, Restaurant>>(
     "favoriteRestaurantData",
     {}
+  );
+  const [visitHistory, setVisitHistory] = useLocalStorage<VisitRecord[]>("restaurantVisitHistory", []);
+
+  const visitStats = useMemo<VisitStatsMap>(() => {
+    const stats: VisitStatsMap = {};
+    for (const visit of visitHistory) {
+      if (!visit?.restaurantId) continue;
+      const existing = stats[visit.restaurantId];
+      if (existing) {
+        existing.count += 1;
+        if (!existing.lastVisited || visit.timestamp > existing.lastVisited) {
+          existing.lastVisited = visit.timestamp;
+          existing.snapshot = visit.snapshot;
+        }
+      } else {
+        stats[visit.restaurantId] = {
+          count: 1,
+          lastVisited: visit.timestamp,
+          snapshot: visit.snapshot,
+        };
+      }
+    }
+    return stats;
+  }, [visitHistory]);
+
+  const buildVisitSnapshot = useCallback(
+    (restaurant: Restaurant): VisitSnapshot => ({
+      id: restaurant.id,
+      name: restaurant.name,
+      imageUrl: restaurant.imageUrl,
+      rating: restaurant.rating,
+      reviewCount: restaurant.reviewCount,
+      address: restaurant.address,
+      priceLevel: restaurant.priceLevel,
+      types: restaurant.types ?? [],
+    }),
+    []
+  );
+
+  const handleCheckIn = useCallback(
+    (restaurant: Restaurant) => {
+      if (!restaurant?.id) return;
+      const timestamp = new Date().toISOString();
+      const snapshot = buildVisitSnapshot(restaurant);
+      setVisitHistory((prev) =>
+        [
+          {
+            id: `${restaurant.id}-${timestamp}`,
+            restaurantId: restaurant.id,
+            timestamp,
+            snapshot,
+          },
+          ...prev,
+        ].slice(0, 200)
+      );
+      setRestaurants((prev) =>
+        prev.map((r) =>
+          r.id === restaurant.id
+            ? {
+                ...r,
+                hasVisited: true,
+                visitCount: (r.visitCount ?? 0) + 1,
+                lastVisited: timestamp,
+              }
+            : r
+        )
+      );
+      setSelectedRestaurantSnapshot((prev) =>
+        prev && prev.id === restaurant.id
+          ? {
+              ...prev,
+              hasVisited: true,
+              visitCount: (prev.visitCount ?? 0) + 1,
+              lastVisited: timestamp,
+            }
+          : prev
+      );
+    },
+    [buildVisitSnapshot, setVisitHistory]
   );
 
   // Load restaurants once on startup
@@ -200,15 +279,29 @@ export const App = () => {
 
   useEffect(() => {
     setRestaurants((prev) =>
-      prev.map((restaurant) => ({
-        ...restaurant,
-        isFavorite: favoriteIds.includes(restaurant.id),
-      }))
+      prev.map((restaurant) => {
+        const visitInfo = visitStats[restaurant.id];
+        return {
+          ...restaurant,
+          isFavorite: favoriteIds.includes(restaurant.id),
+          hasVisited: Boolean(visitInfo),
+          visitCount: visitInfo?.count ?? restaurant.visitCount,
+          lastVisited: visitInfo?.lastVisited ?? restaurant.lastVisited ?? null,
+        };
+      })
     );
-    setSelectedRestaurantSnapshot((prev) =>
-      prev ? { ...prev, isFavorite: favoriteIds.includes(prev.id) } : prev
-    );
-  }, [favoriteIds]);
+    setSelectedRestaurantSnapshot((prev) => {
+      if (!prev) return prev;
+      const visitInfo = visitStats[prev.id];
+      return {
+        ...prev,
+        isFavorite: favoriteIds.includes(prev.id),
+        hasVisited: Boolean(visitInfo),
+        visitCount: visitInfo?.count ?? prev.visitCount,
+        lastVisited: visitInfo?.lastVisited ?? prev.lastVisited ?? null,
+      };
+    });
+  }, [favoriteIds, visitStats]);
 
   useEffect(() => {
     if (!restaurants.length || !favoriteIds.length) {
@@ -300,6 +393,9 @@ export const App = () => {
             onToggleFavorite={handleToggleFavorite}
             favorites={favoriteIds}
             recentlyViewed={recentRestaurants}
+            visitHistory={visitHistory}
+            visitStats={visitStats}
+            onCheckIn={handleCheckIn}
           />
         );
       case "recommendations":
@@ -310,6 +406,9 @@ export const App = () => {
             onToggleFavorite={handleToggleFavorite}
             favorites={favoriteIds}
             recentlyViewed={recentRestaurants}
+            visitHistory={visitHistory}
+            visitStats={visitStats}
+            onCheckIn={handleCheckIn}
           />
         );
       case "profile":
@@ -319,6 +418,8 @@ export const App = () => {
             onSelectRestaurant={handleSelectRestaurant}
             onToggleFavorite={handleToggleFavorite}
             favorites={favoriteRestaurants}
+            visitHistory={visitHistory}
+            visitStats={visitStats}
           />
         );
       case "restaurant-details":
@@ -332,6 +433,8 @@ export const App = () => {
             error={detailsError}
             onBack={handleBackFromRestaurant}
             onToggleFavorite={handleToggleFavorite}
+            onCheckIn={handleCheckIn}
+            visitInfo={visitStats[selectedRestaurantId]}
           />
         );
       default:
