@@ -10,6 +10,7 @@ import { useLocalStorage } from "./hooks/useLocalStorage";
 import { AssistantChatWidget } from "./components/AssistantChatWidget";
 
 export type Page = "discover" | "recommendations" | "profile" | "restaurant-details";
+type Theme = "light" | "dark";
 
 export const App = () => {
   const [currentPage, setCurrentPage] = useState<Page>("discover");
@@ -26,6 +27,9 @@ export const App = () => {
     {}
   );
   const [visitHistory, setVisitHistory] = useLocalStorage<VisitRecord[]>("restaurantVisitHistory", []);
+  const prefersDark =
+    typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const [theme, setTheme] = useLocalStorage<Theme>("dinevalley-theme", prefersDark ? "dark" : "light");
 
   const visitStats = useMemo<VisitStatsMap>(() => {
     const stats: VisitStatsMap = {};
@@ -195,6 +199,11 @@ export const App = () => {
   );
 
   const handleNavigate = (page: Page) => setCurrentPage(page);
+
+  const toggleTheme = useCallback(
+    () => setTheme((prev) => (prev === "dark" ? "light" : "dark")),
+    [setTheme]
+  );
 
   const handleSelectRestaurant = (restaurant: Restaurant) => {
     setSelectedRestaurantId(restaurant.id);
@@ -396,6 +405,8 @@ export const App = () => {
             visitHistory={visitHistory}
             visitStats={visitStats}
             onCheckIn={handleCheckIn}
+            theme={theme}
+            onToggleTheme={toggleTheme}
           />
         );
       case "recommendations":
@@ -442,11 +453,23 @@ export const App = () => {
     }
   };
 
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    if (theme === "dark") {
+      root.classList.add("dark");
+    } else {
+      root.classList.remove("dark");
+    }
+  }, [theme]);
+
   return (
     <>
-      <div className="flex h-screen bg-gray-50">
+      <div className="flex h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 transition-colors duration-300">
         <Sidebar onNavigate={handleNavigate} currentPage={currentPage} />
-        <div className="flex-1 flex flex-col overflow-y-auto">{renderPage()}</div>
+        <div className="flex-1 flex flex-col overflow-y-auto bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
+          {renderPage()}
+        </div>
       </div>
       <AssistantChatWidget restaurants={restaurants} onSelectRestaurant={handleSelectRestaurant} />
     </>

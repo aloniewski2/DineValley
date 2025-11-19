@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { Dialog } from "@headlessui/react";
-import { Restaurant, RestaurantDetails } from "../../../types";
-import { Heart, Globe, Phone, Navigation, MapPin } from "lucide-react";
+import { Restaurant, RestaurantDetails, VisitStatsEntry } from "../../../types";
+import { Heart, Globe, Phone, Navigation, MapPin, CheckCircle2 } from "lucide-react";
 import { StatusBanner } from "../../components/StatusBanner";
 
 export interface RestaurantDetailsPageProps {
@@ -12,6 +12,8 @@ export interface RestaurantDetailsPageProps {
   error?: string | null;
   onBack: () => void;
   onToggleFavorite: (id: string) => void;
+  onCheckIn: (restaurant: Restaurant) => void;
+  visitInfo?: VisitStatsEntry;
 }
 
 export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
@@ -22,6 +24,8 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
   error,
   onBack,
   onToggleFavorite,
+  onCheckIn,
+  visitInfo,
 }) => {
   const display = useMemo(() => {
     if (details) {
@@ -150,6 +154,22 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
 
   const showSkeleton = loading && !details;
 
+  const handleCheckIn = useCallback(() => {
+    if (!display) return;
+    const payload: Restaurant = {
+      id: display.id,
+      name: display.name,
+      imageUrl: display.imageUrl || fallbackRestaurant?.imageUrl || "https://source.unsplash.com/400x300/?restaurant,food",
+      rating: display.rating,
+      reviewCount: display.reviewCount,
+      address: display.address,
+      priceLevel: display.priceLevel,
+      businessStatus: fallbackRestaurant?.businessStatus ?? "UNKNOWN",
+      types: details?.types ?? fallbackRestaurant?.types ?? [],
+    };
+    onCheckIn(payload);
+  }, [details?.types, display, fallbackRestaurant, onCheckIn]);
+
   const mapLink = useMemo(() => {
     if (details?.googleMapsUrl) return details.googleMapsUrl;
     if (details?.coordinates) {
@@ -172,7 +192,7 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
   const topReview = details?.reviews?.[0];
 
   return (
-    <div className="p-6 overflow-y-auto">
+    <div className="p-6 overflow-y-auto bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-full transition-colors duration-300">
       {isOffline && (
         <StatusBanner
           variant="warning"
@@ -187,27 +207,43 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
         />
       )}
       {/* Header */}
-      <div className="flex items-start justify-between mb-4">
-        <button
-          className="text-gray-600 hover:text-gray-900"
-          onClick={onBack}
-        >
+      <div className="flex flex-col gap-3 mb-4 md:flex-row md:items-start md:justify-between">
+        <button className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white" onClick={onBack}>
           ← Back
         </button>
-        <button
-          className="flex items-center gap-1 text-sm"
-          onClick={() => onToggleFavorite(display.id)}
-        >
-          <Heart
-            size={20}
-            className={
-              display.isFavorite
-                ? "text-red-500 fill-red-500"
-                : "text-gray-400"
-            }
-          />
-          {display.isFavorite ? "Saved" : "Save"}
-        </button>
+        <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+          {visitInfo && (
+            <div className="text-right sm:text-left">
+              <p className="flex items-center justify-end gap-1 text-xs font-semibold text-emerald-600 sm:justify-start">
+                <CheckCircle2 size={14} />
+                {visitInfo.count} visit{visitInfo.count > 1 ? "s" : ""} logged
+              </p>
+              <p className="text-xs text-gray-500">
+                Last visit {new Date(visitInfo.lastVisited).toLocaleDateString()}
+              </p>
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <button
+              className="rounded-full border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-100 dark:hover:bg-gray-800"
+              type="button"
+              onClick={handleCheckIn}
+            >
+              Been here
+            </button>
+            <button
+              className="flex items-center gap-1 text-sm text-gray-700 dark:text-gray-100"
+              onClick={() => onToggleFavorite(display.id)}
+            >
+              <Heart
+                size={20}
+                className={display.isFavorite ? "text-red-500 fill-red-500" : "text-gray-400"}
+                fill={display.isFavorite ? "currentColor" : "none"}
+              />
+              {display.isFavorite ? "Saved" : "Save"}
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Restaurant Image */}
@@ -257,7 +293,7 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
           <div className="h-3 w-32 rounded bg-gray-200 animate-pulse" />
         </div>
       )}
-      <div className="flex items-center gap-3 text-sm text-gray-600 mb-4">
+      <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-300 mb-4">
         <span>
           ⭐ {display.rating ?? "-"} ({display.reviewCount} reviews)
         </span>
@@ -265,7 +301,7 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
           <span>{"$".repeat(display.priceLevel)}</span>
         )}
         {formattedTypes.length > 0 && (
-          <span className="text-sm text-gray-600">
+          <span className="text-sm text-gray-600 dark:text-gray-300">
             {formattedTypes.join(", ")}
           </span>
         )}
@@ -277,7 +313,7 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
             <button
               type="button"
               onClick={handleOpenMenu}
-              className="inline-flex items-center gap-2 rounded-full border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-black"
+              className="inline-flex items-center gap-2 rounded-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-gray-300"
             >
               <Globe size={18} />
               View Menu
@@ -289,7 +325,7 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
               href={href}
               target={href.startsWith("http") ? "_blank" : undefined}
               rel={href.startsWith("http") ? "noreferrer" : undefined}
-              className="inline-flex items-center gap-2 rounded-full border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-black"
+              className="inline-flex items-center gap-2 rounded-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-gray-300"
               aria-label={label}
             >
               {icon}
@@ -300,8 +336,8 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
       )}
 
       {/* About Section */}
-      <div className="bg-gray-50 p-4 rounded-lg mb-6">
-        <h2 className="font-semibold mb-2">About</h2>
+      <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg mb-6 transition-colors duration-300">
+        <h2 className="font-semibold mb-2 text-gray-900 dark:text-gray-100">About</h2>
         {showSkeleton ? (
           <div className="space-y-2">
             <div className="h-3 w-3/4 rounded bg-gray-200 animate-pulse" />
@@ -309,7 +345,7 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
             <div className="h-3 w-1/2 rounded bg-gray-200 animate-pulse" />
           </div>
         ) : (
-          <p className="text-sm text-gray-700">
+          <p className="text-sm text-gray-700 dark:text-gray-200">
             {details?.openingHours?.length
               ? `Open today: ${details.openingHours[0]}`
               : "Detailed description is coming soon."}
@@ -318,8 +354,8 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
       </div>
 
       {/* Contact Section */}
-      <div className="bg-gray-50 p-4 rounded-lg mb-6">
-        <h2 className="font-semibold mb-2">Contact & Hours</h2>
+      <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg mb-6 transition-colors duration-300">
+        <h2 className="font-semibold mb-2 text-gray-900 dark:text-gray-100">Contact &amp; Hours</h2>
         {showSkeleton ? (
           <div className="space-y-2">
             <div className="h-3 w-2/3 rounded bg-gray-200 animate-pulse" />
@@ -328,31 +364,31 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
           </div>
         ) : (
           <>
-            <p className="text-sm">📍 {display.address}</p>
-            {details?.phone && <p className="text-sm">📞 {details.phone}</p>}
+            <p className="text-sm text-gray-800 dark:text-gray-200">📍 {display.address}</p>
+            {details?.phone && <p className="text-sm text-gray-800 dark:text-gray-200">📞 {details.phone}</p>}
             {details?.website && (
-              <p className="text-sm">
-                🌐 <a href={details.website} className="text-blue-600 underline" target="_blank" rel="noreferrer">Visit Website</a>
+              <p className="text-sm text-gray-800 dark:text-gray-200">
+                🌐 <a href={details.website} className="text-blue-600 underline dark:text-blue-400" target="_blank" rel="noreferrer">Visit Website</a>
               </p>
             )}
             {details?.openingHours?.length ? (
               <ul className="mt-2 space-y-1">
                 {details.openingHours.map((entry, idx) => (
-                  <li key={idx} className="text-sm text-gray-600">
+                  <li key={idx} className="text-sm text-gray-600 dark:text-gray-300">
                     {entry}
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-gray-500">Hours unavailable.</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Hours unavailable.</p>
             )}
           </>
         )}
       </div>
 
       {details?.mapImageUrl && (
-        <div className="bg-gray-50 p-4 rounded-lg mb-6">
-          <h2 className="font-semibold mb-2">Where you'll find it</h2>
+        <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg mb-6 transition-colors duration-300">
+          <h2 className="font-semibold mb-2 text-gray-900 dark:text-gray-100">Where you'll find it</h2>
           <div className="relative">
             <img
               src={details.mapImageUrl}
@@ -375,22 +411,22 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
       )}
 
       {reviewSummary && (
-        <div className="bg-gray-50 p-4 rounded-lg mb-6">
-          <h2 className="font-semibold mb-2">Review Highlights</h2>
+        <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg mb-6 transition-colors duration-300">
+          <h2 className="font-semibold mb-2 text-gray-900 dark:text-gray-100">Review Highlights</h2>
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
-              <p className="text-3xl font-bold text-gray-900">
+              <p className="text-3xl font-bold text-gray-900 dark:text-white">
                 {reviewSummary.average ? reviewSummary.average.toFixed(1) : "-"}
               </p>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-gray-600 dark:text-gray-300">
                 Based on {reviewSummary.total} Google reviews
               </p>
             </div>
             {topReview && (
-              <div className="rounded-lg bg-white p-4 shadow-sm">
-                <p className="font-semibold text-sm">{topReview.authorName}</p>
-                <p className="text-xs text-gray-500">{topReview.relativeTimeDescription}</p>
-                <p className="mt-2 text-sm text-gray-700">
+              <div className="rounded-lg bg-white dark:bg-gray-900 p-4 shadow-sm border border-gray-100 dark:border-gray-700">
+                <p className="font-semibold text-sm text-gray-900 dark:text-gray-100">{topReview.authorName}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{topReview.relativeTimeDescription}</p>
+                <p className="mt-2 text-sm text-gray-700 dark:text-gray-200">
                   {topReview.text.length > 280
                     ? `${topReview.text.slice(0, 277)}...`
                     : topReview.text}
@@ -402,14 +438,14 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
       )}
 
       {/* Reviews */}
-      <div className="bg-gray-50 p-4 rounded-lg mb-6">
-        <h2 className="font-semibold mb-3">Recent Reviews</h2>
-        {loading && <p className="text-sm text-gray-500">Loading reviews...</p>}
+      <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg mb-6 transition-colors duration-300">
+        <h2 className="font-semibold mb-3 text-gray-900 dark:text-gray-100">Recent Reviews</h2>
+        {loading && <p className="text-sm text-gray-500 dark:text-gray-400">Loading reviews...</p>}
         {error && <p className="text-sm text-red-500">{error}</p>}
         {!loading && !error && details?.reviews?.length ? (
           <div className="space-y-4">
             {details.reviews.slice(0, 5).map((review, idx) => (
-              <div key={idx} className="rounded-lg bg-white p-4 shadow-sm">
+              <div key={idx} className="rounded-lg bg-white dark:bg-gray-900 p-4 shadow-sm border border-gray-100 dark:border-gray-700">
                 <div className="flex items-center gap-3 mb-2">
                   {review.profilePhotoUrl && (
                     <img
@@ -419,18 +455,19 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
                     />
                   )}
                   <div>
-                    <p className="font-semibold text-sm">{review.authorName}</p>
-                    <p className="text-xs text-gray-500">{review.relativeTimeDescription}</p>
+                    <p className="font-semibold text-sm text-gray-900 dark:text-gray-100">{review.authorName}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{review.relativeTimeDescription}</p>
                   </div>
-                  <span className="ml-auto text-sm text-yellow-500">⭐ {review.rating}</span>
+                  <span className="ml-auto text-sm text-yellow-400">⭐ {review.rating}</span>
                 </div>
-                <p className="text-sm text-gray-700 whitespace-pre-line">{review.text}</p>
+                <p className="text-sm text-gray-700 dark:text-gray-200 whitespace-pre-line">{review.text}</p>
               </div>
             ))}
           </div>
-        ) : (!loading && !error && (
-          <p className="text-sm text-gray-500">No reviews available yet.</p>
-        ))}
+        ) : (
+          !loading &&
+          !error && <p className="text-sm text-gray-500 dark:text-gray-400">No reviews available yet.</p>
+        )}
       </div>
 
       {/* Save Button */}
@@ -445,17 +482,17 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
 
       <Dialog open={menuOpen} onClose={() => setMenuOpen(false)} className="fixed inset-0 z-[70] overflow-y-auto">
         <div className="flex min-h-screen items-center justify-center px-4 py-8">
-          <div className="fixed inset-0 bg-black/50" aria-hidden="true" />
-          <div className="relative z-10 w-full max-w-4xl rounded-2xl bg-white p-6 shadow-xl">
+          <div className="fixed inset-0 bg-black/60" aria-hidden="true" />
+          <div className="relative z-10 w-full max-w-4xl rounded-2xl bg-white dark:bg-gray-900 p-6 shadow-xl border border-gray-100 dark:border-gray-700">
             <div className="flex items-start justify-between">
               <div>
-                <h3 className="text-xl font-semibold">Menu</h3>
-                <p className="text-sm text-gray-500">{display.name}</p>
+                <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Menu</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">{display.name}</p>
               </div>
               <button
                 type="button"
                 onClick={() => setMenuOpen(false)}
-                className="rounded-full bg-gray-100 px-3 py-1 text-sm font-medium text-gray-600 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-black"
+                className="rounded-full bg-gray-100 dark:bg-gray-800 px-3 py-1 text-sm font-medium text-gray-600 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-gray-500"
               >
                 Close
               </button>
@@ -479,13 +516,13 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
                     href={menuUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-2 rounded-full bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-900"
+                    className="inline-flex items-center gap-2 rounded-full bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-900 dark:hover:bg-black/80"
                   >
                     Open Menu in New Tab
                   </a>
                 </div>
               ) : (
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-gray-600 dark:text-gray-300">
                   Menu information isn’t available yet. Try calling the restaurant for today’s offerings.
                 </p>
               )}

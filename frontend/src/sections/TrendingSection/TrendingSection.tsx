@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { RestaurantCard } from "../../components/RestaurantCard";
 import { RestaurantCardSkeleton } from "../../components/RestaurantCardSkeleton";
-import { Restaurant } from "../../../types";
+import { Restaurant, VisitStatsMap } from "../../../types";
 
 interface TrendingSectionProps {
   restaurants: Restaurant[];
@@ -12,6 +12,8 @@ interface TrendingSectionProps {
   loading?: boolean;
   resetKey?: number;
   pageSize?: number;
+  onCheckIn?: (restaurant: Restaurant) => void;
+  visitStats?: VisitStatsMap;
 }
 
 export const TrendingSection: React.FC<TrendingSectionProps> = ({
@@ -23,6 +25,8 @@ export const TrendingSection: React.FC<TrendingSectionProps> = ({
   loading = false,
   resetKey,
   pageSize = 6,
+  onCheckIn,
+  visitStats = {},
 }) => {
   const [currentPage, setCurrentPage] = useState(0);
   const [pendingPage, setPendingPage] = useState<number | null>(null);
@@ -31,10 +35,7 @@ export const TrendingSection: React.FC<TrendingSectionProps> = ({
   const totalPages = totalItems === 0 ? 0 : Math.ceil(totalItems / pageSize);
   const start = currentPage * pageSize;
   const end = start + pageSize;
-  const currentRestaurants = useMemo(
-    () => restaurants.slice(start, end),
-    [restaurants, start, end]
-  );
+  const currentRestaurants = useMemo(() => restaurants.slice(start, end), [restaurants, start, end]);
 
   useEffect(() => {
     setCurrentPage(0);
@@ -132,6 +133,10 @@ export const TrendingSection: React.FC<TrendingSectionProps> = ({
               restaurant={restaurant}
               onClick={() => onSelectRestaurant(restaurant)}
               onFavorite={() => onToggleFavorite(restaurant.id)}
+              visited={Boolean(visitStats[restaurant.id])}
+              visitCount={visitStats[restaurant.id]?.count}
+              lastVisited={visitStats[restaurant.id]?.lastVisited}
+              onCheckIn={onCheckIn ? () => onCheckIn(restaurant) : undefined}
             />
           ))}
         </div>

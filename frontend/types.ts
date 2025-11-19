@@ -10,6 +10,9 @@ export interface Restaurant {
   types: string[];
   isFavorite?: boolean;
   dietary?: string[];
+  hasVisited?: boolean;
+  visitCount?: number;
+  lastVisited?: string | null;
 }
 
 export interface RestaurantReview {
@@ -49,6 +52,32 @@ export interface FilterOptions {
   openNow: boolean;
   distanceMiles: number;
 }
+
+export interface VisitSnapshot {
+  id: string;
+  name: string;
+  imageUrl: string;
+  rating: number;
+  reviewCount: number;
+  address: string;
+  priceLevel: number | null;
+  types: string[];
+}
+
+export interface VisitRecord {
+  id: string;
+  restaurantId: string;
+  timestamp: string;
+  snapshot: VisitSnapshot;
+}
+
+export interface VisitStatsEntry {
+  count: number;
+  lastVisited: string;
+  snapshot: VisitSnapshot;
+}
+
+export type VisitStatsMap = Record<string, VisitStatsEntry>;
 
 export const DEFAULT_FILTERS: FilterOptions = {
   cuisines: [],

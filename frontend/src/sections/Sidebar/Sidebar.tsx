@@ -26,7 +26,7 @@ const navItems = [
 ] as const;
 
 export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, currentPage }) => (
-  <aside className="w-64 bg-white px-4 py-6 border-r flex flex-col gap-2">
+  <aside className="w-64 bg-white dark:bg-gray-950 px-4 py-6 border-r border-gray-100 dark:border-gray-800 flex flex-col gap-4 transition-colors duration-300">
     <nav className="flex flex-col gap-1">
       {navItems.map((item) => (
         <button
@@ -34,8 +34,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, currentPage }) => 
           className={`flex items-center gap-3 px-3 py-2 text-base font-medium rounded-lg transition
             ${
               currentPage === item.key
-                ? "bg-gray-100 text-black"
-                : "text-gray-600 hover:bg-gray-50"
+                ? "bg-gray-100 text-black dark:bg-gray-800 dark:text-white"
+                : "text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800/80"
             }`}
           onClick={() => onNavigate(item.key as Page)}
         >

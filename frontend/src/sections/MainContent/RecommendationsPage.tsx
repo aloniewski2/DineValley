@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { RestaurantCard } from "../../components/RestaurantCard";
-import { Restaurant } from "../../../types";
+import { Restaurant, VisitRecord, VisitStatsMap } from "../../../types";
 
 interface RecommendationsPageProps {
   restaurants: Restaurant[];
@@ -8,6 +8,9 @@ interface RecommendationsPageProps {
   onToggleFavorite: (id: string) => void;
   favorites: string[];
   recentlyViewed: Restaurant[];
+  visitHistory: VisitRecord[];
+  visitStats: VisitStatsMap;
+  onCheckIn: (restaurant: Restaurant) => void;
 }
 
 const getCuisineScore = (restaurant: Restaurant, favorites: Restaurant[]): number => {
@@ -33,11 +36,17 @@ export const RecommendationsPage: React.FC<RecommendationsPageProps> = ({
   onToggleFavorite,
   favorites,
   recentlyViewed,
+  visitHistory,
+  visitStats,
+  onCheckIn,
 }) => {
   const favoriteRestaurants = useMemo(
     () => restaurants.filter((r) => favorites.includes(r.id)),
     [restaurants, favorites]
   );
+
+  const visitedSet = useMemo(() => new Set(visitHistory.map((visit) => visit.restaurantId)), [visitHistory]);
+  const latestVisit = visitHistory[0] ?? null;
 
   const personalized = useMemo(() => {
     const highRated = restaurants.filter((r) => r.rating >= 4.0);
@@ -63,6 +72,44 @@ export const RecommendationsPage: React.FC<RecommendationsPageProps> = ({
     [recentlyViewed, favorites]
   );
 
+  const becauseYouLikedSection = useMemo(() => {
+    if (!latestVisit) return { label: "", list: [] as Restaurant[] };
+    const likedTypes = latestVisit.snapshot.types ?? [];
+    if (!likedTypes.length) return { label: latestVisit.snapshot.name, list: [] as Restaurant[] };
+
+    const list = restaurants
+      .filter((restaurant) => restaurant.id !== latestVisit.restaurantId)
+      .filter((restaurant) => restaurant.types?.some((type) => likedTypes.includes(type)))
+      .slice(0, 6);
+
+    return { label: latestVisit.snapshot.name, list };
+  }, [latestVisit, restaurants]);
+
+  const historySmartSection = useMemo(() => {
+    if (!visitHistory.length) return { list: [] as Restaurant[], topTypes: [] as string[] };
+    const scores = new Map<string, number>();
+    visitHistory.forEach((visit, index) => {
+      const weight = visitHistory.length - index;
+      (visit.snapshot.types ?? []).forEach((type) => {
+        scores.set(type, (scores.get(type) ?? 0) + weight);
+      });
+    });
+
+    const topTypes = [...scores.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([type]) => type);
+
+    if (!topTypes.length) return { list: [] as Restaurant[], topTypes };
+
+    const list = restaurants
+      .filter((restaurant) => restaurant.types?.some((type) => topTypes.includes(type)))
+      .filter((restaurant) => !visitedSet.has(restaurant.id))
+      .slice(0, 6);
+
+    return { list, topTypes };
+  }, [restaurants, visitHistory, visitedSet]);
+
   const recommended = personalized.length > 0 ? personalized : fallbackRecent;
 
   return (
@@ -86,6 +133,10 @@ export const RecommendationsPage: React.FC<RecommendationsPageProps> = ({
               restaurant={restaurant}
               onClick={() => onSelectRestaurant(restaurant)}
               onFavorite={() => onToggleFavorite(restaurant.id)}
+              visited={Boolean(visitStats[restaurant.id])}
+              visitCount={visitStats[restaurant.id]?.count}
+              lastVisited={visitStats[restaurant.id]?.lastVisited}
+              onCheckIn={() => onCheckIn(restaurant)}
             />
           ))}
         </div>
@@ -95,6 +146,54 @@ export const RecommendationsPage: React.FC<RecommendationsPageProps> = ({
         <p className="text-sm text-gray-500">
           Showing recently viewed restaurants until we learn your preferences.
         </p>
+      )}
+
+      {becauseYouLikedSection.list.length > 0 && latestVisit && (
+        <section className="space-y-3">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-gray-500">Because you liked</p>
+            <h3 className="text-lg font-semibold">{becauseYouLikedSection.label}</h3>
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {becauseYouLikedSection.list.map((restaurant) => (
+              <RestaurantCard
+                key={`liked-${restaurant.id}`}
+                restaurant={restaurant}
+                onClick={() => onSelectRestaurant(restaurant)}
+                onFavorite={() => onToggleFavorite(restaurant.id)}
+                visited={Boolean(visitStats[restaurant.id])}
+                visitCount={visitStats[restaurant.id]?.count}
+                lastVisited={visitStats[restaurant.id]?.lastVisited}
+                onCheckIn={() => onCheckIn(restaurant)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {historySmartSection.list.length > 0 && (
+        <section className="space-y-3">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-gray-500">Smart recommendations</p>
+            <h3 className="text-lg font-semibold">
+              Personalized for fans of {historySmartSection.topTypes.map((type) => type.replace(/_/g, " ")).join(", ")}
+            </h3>
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {historySmartSection.list.map((restaurant) => (
+              <RestaurantCard
+                key={`smart-${restaurant.id}`}
+                restaurant={restaurant}
+                onClick={() => onSelectRestaurant(restaurant)}
+                onFavorite={() => onToggleFavorite(restaurant.id)}
+                visited={Boolean(visitStats[restaurant.id])}
+                visitCount={visitStats[restaurant.id]?.count}
+                lastVisited={visitStats[restaurant.id]?.lastVisited}
+                onCheckIn={() => onCheckIn(restaurant)}
+              />
+            ))}
+          </div>
+        </section>
       )}
     </div>
   );

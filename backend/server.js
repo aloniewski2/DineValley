@@ -46,6 +46,8 @@ const DEFAULT_GROQ_MODEL = "llama-3.1-8b-instant";
 const GROQ_MODEL = process.env.GROQ_MODEL || DEFAULT_GROQ_MODEL;
 const logChat = (...args) => console.log("[GroqChat]", ...args);
 
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
 if (!API_KEY) {
   console.error("❌ ERROR: GOOGLE_PLACES_API_KEY is missing in .env");
   process.exit(1);
@@ -129,9 +131,7 @@ app.get("/restaurants", async (req, res) => {
     const { keyword, minPrice, maxPrice, openNow, pageToken, radius } = req.query;
 
     const parsedRadius = radius ? Number(radius) : undefined;
-    const radiusMeters = Number.isFinite(parsedRadius)
-      ? Math.min(Math.max(parsedRadius, 500), 50000)
-      : 20000;
+    const radiusMeters = Number.isFinite(parsedRadius) ? clamp(parsedRadius, 500, 50000) : 20000;
 
     const params = {
       location: DEFAULT_LOCATION,

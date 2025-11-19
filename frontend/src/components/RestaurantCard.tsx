@@ -6,30 +6,39 @@ interface RestaurantCardProps {
   restaurant: Restaurant;
   onClick: () => void;
   onFavorite: () => void;
+  visited?: boolean;
+  visitCount?: number;
+  lastVisited?: string | null;
+  onCheckIn?: () => void;
 }
+
+const formatLastVisit = (timestamp?: string | null) => {
+  if (!timestamp) return "";
+  try {
+    const date = new Date(timestamp);
+    return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  } catch {
+    return "";
+  }
+};
 
 export const RestaurantCard = ({
   restaurant,
   onClick,
   onFavorite,
+  visited = false,
+  visitCount,
+  lastVisited,
+  onCheckIn,
 }: RestaurantCardProps) => {
-  const {
-    imageUrl,
-    name,
-    rating,
-    reviewCount,
-    address,
-    priceLevel,
-    types,
-    isFavorite,
-    businessStatus,
-  } = restaurant;
-
+  const { imageUrl, name, rating, reviewCount, address, priceLevel, types, isFavorite, businessStatus } =
+    restaurant;
   const resolvedImageUrl = imageUrl || "https://source.unsplash.com/400x300/?restaurant,food";
+  const formattedVisitDate = formatLastVisit(lastVisited);
 
   return (
     <div
-      className="relative rounded-lg overflow-hidden shadow cursor-pointer"
+      className="relative overflow-hidden rounded-lg shadow cursor-pointer bg-white dark:bg-gray-900 border border-transparent dark:border-gray-800 transition-colors duration-300"
       onClick={onClick}
       tabIndex={0}
       role="button"
@@ -38,66 +47,90 @@ export const RestaurantCard = ({
         <img
           src={resolvedImageUrl}
           alt={name}
-          className="h-48 w-full object-cover"
+          className="object-cover w-full h-48"
           onError={(e) => {
             const target = e.currentTarget as HTMLImageElement;
             if (target.src !== "https://source.unsplash.com/400x300/?restaurant,food") {
-              target.src = "https://source.unsplash.com/400x300/?restaurant,food"; // fallback
+              target.src = "https://source.unsplash.com/400x300/?restaurant,food";
             }
           }}
         />
 
         {businessStatus !== "OPERATIONAL" && (
-          <div className="absolute bg-red-500 text-white px-2 py-1 rounded text-xs font-medium top-2 left-2">
+          <div className="absolute px-2 py-1 text-xs font-medium text-white bg-red-500 rounded top-2 left-2">
             Closed
           </div>
         )}
 
         <button
-          className="absolute h-8 w-8 top-2 right-2 flex items-center justify-center rounded-full bg-white bg-opacity-70 hover:bg-opacity-100 transition"
+          className="absolute flex items-center justify-center w-8 h-8 transition rounded-full bg-white/70 hover:bg-white dark:bg-gray-900/80 dark:hover:bg-gray-900 top-2 right-2"
           onClick={(e) => {
             e.stopPropagation();
             onFavorite();
           }}
           aria-label={isFavorite ? "Unsave" : "Save"}
+          type="button"
         >
           <Heart
             size={22}
             strokeWidth={2}
             className={isFavorite ? "text-red-500 fill-red-500" : "text-gray-300"}
-            fill={isFavorite ? "currentColor" : "white"}
+            fill={isFavorite ? "currentColor" : "none"}
           />
         </button>
       </div>
 
-      <div className="p-4">
-        <div className="flex gap-x-2 items-center mb-2">
-          <h3 className="text-lg font-semibold">{name}</h3>
+      <div className="p-4 text-gray-900 dark:text-gray-100">
+        <div className="flex items-center gap-2 mb-2">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{name}</h3>
           {priceLevel !== null && (
-            <span className="text-sm text-gray-500">
-              {"$".repeat(priceLevel)}
-            </span>
+            <span className="text-sm text-gray-500 dark:text-gray-400">{"$".repeat(priceLevel)}</span>
           )}
         </div>
 
-        <div className="flex gap-x-1 flex-wrap mb-2">
+        <div className="flex flex-wrap gap-1 mb-2">
           {types?.map((type, index) => (
-            <span key={index} className="text-sm text-gray-600 capitalize">
+            <span key={index} className="text-sm text-gray-600 dark:text-gray-300 capitalize">
               {type.replace(/_/g, " ")}
               {index < types.length - 1 && " • "}
             </span>
           ))}
         </div>
 
-        <p className="text-sm text-gray-500 mb-2">{address}</p>
+        <p className="mb-2 text-sm text-gray-500 dark:text-gray-400">{address}</p>
 
-        <div className="flex items-center gap-x-1">
-          <span className="text-yellow-500 text-sm">★</span>
-          <span className="text-sm font-medium">{rating}</span>
-          <span className="text-sm text-gray-500">
-            ({reviewCount} reviews)
-          </span>
+        <div className="flex items-center gap-1">
+          <span className="text-sm text-yellow-500">★</span>
+          <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{rating}</span>
+          <span className="text-sm text-gray-500 dark:text-gray-400">({reviewCount} reviews)</span>
         </div>
+
+        {(onCheckIn || visited) && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {onCheckIn && (
+              <button
+                type="button"
+                className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                  visited
+                    ? "border-emerald-500 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10"
+                    : "border-gray-300 text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+                }`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onCheckIn();
+                }}
+              >
+                {visited ? "Check in again" : "Been here"}
+              </button>
+            )}
+            {visited && (
+              <span className="text-xs font-medium text-emerald-600">
+                {visitCount ? `${visitCount} visit${visitCount > 1 ? "s" : ""}` : "Visited"}
+                {formattedVisitDate ? ` · ${formattedVisitDate}` : ""}
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

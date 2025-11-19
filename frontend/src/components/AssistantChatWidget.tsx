@@ -353,30 +353,30 @@ export const AssistantChatWidget: React.FC<Props> = ({ restaurants, onSelectRest
   return (
     <div className="fixed bottom-6 right-6 z-50">
       {isOpen ? (
-        <div className="flex h-[32rem] w-80 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
-          <header className="flex items-center justify-between border-b px-4 py-3">
-            <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">
-              <span className="rounded-full bg-indigo-50 p-1.5 text-indigo-600">
+        <div className="flex h-[32rem] w-80 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
+          <header className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 px-4 py-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+              <span className="rounded-full bg-indigo-50 dark:bg-indigo-600/30 p-1.5 text-indigo-600 dark:text-indigo-200">
                 <Bot size={18} />
               </span>
               DineValley AI
             </div>
             <button
               type="button"
-              className="text-gray-500 transition hover:text-gray-700"
+              className="text-gray-500 dark:text-gray-400 transition hover:text-gray-700 dark:hover:text-gray-200"
               onClick={() => setIsOpen(false)}
             >
               <X size={18} />
             </button>
           </header>
-          <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto bg-gray-50 px-4 py-3 text-sm">
+          <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto bg-gray-50 dark:bg-gray-900 px-4 py-3 text-sm">
             {messages.map((message, index) => (
               <div key={`${message.role}-${index}`} className="space-y-2">
                 <div className={`flex ${message.role === "assistant" ? "justify-start" : "justify-end"}`}>
                   <div
                     className={`max-w-[85%] rounded-2xl px-3 py-2 ${
                       message.role === "assistant"
-                        ? "bg-white text-gray-800 shadow-sm"
+                        ? "bg-white text-gray-800 shadow-sm dark:bg-gray-800 dark:text-gray-100"
                         : "bg-indigo-600 text-white shadow"
                     }`}
                   >
@@ -397,7 +397,7 @@ export const AssistantChatWidget: React.FC<Props> = ({ restaurants, onSelectRest
                           type="button"
                           key={recommendation.id}
                           onClick={() => handleRecommendationSelect(recommendation.id)}
-                          className="flex gap-3 rounded-2xl border border-gray-200 bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                          className="flex gap-3 rounded-2xl border border-gray-200 bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-300 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-indigo-400/40"
                         >
                           <img
                             src={image}
@@ -406,15 +406,15 @@ export const AssistantChatWidget: React.FC<Props> = ({ restaurants, onSelectRest
                           />
                           <div className="min-w-0 flex-1">
                             <div className="flex items-start justify-between gap-2">
-                              <p className="text-sm font-semibold text-gray-900">
+                              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
                                 {full?.name || recommendation.name}
                               </p>
                               {favorite && <span className="text-xs text-amber-500">★ Favorite</span>}
                             </div>
-                            <p className="text-xs text-gray-500 truncate">
+                            <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
                               {full?.address || recommendation.address}
                             </p>
-                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-600">
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
                               {typeof (full?.rating ?? recommendation.rating) === "number" && (
                                 <span>Rating {(full?.rating ?? recommendation.rating)?.toFixed(1)}</span>
                               )}
@@ -450,13 +450,13 @@ export const AssistantChatWidget: React.FC<Props> = ({ restaurants, onSelectRest
               </div>
             )}
           </div>
-          <div className="border-t p-3">
+          <div className="border-t border-gray-200 dark:border-gray-700 p-3">
             {error && <p className="mb-2 text-xs text-red-600">{error}</p>}
             <form onSubmit={handleSend} className="flex flex-col gap-2">
               <textarea
                 rows={3}
                 placeholder="Ask about cuisines, filters, or recommendations..."
-                className="w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                className="w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:focus:border-indigo-400 dark:focus:ring-indigo-500/30"
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
                 onKeyDown={handleKeyDown}
@@ -477,9 +477,9 @@ export const AssistantChatWidget: React.FC<Props> = ({ restaurants, onSelectRest
         <button
           type="button"
           onClick={() => setIsOpen(true)}
-          className="inline-flex items-center gap-3 rounded-full border border-transparent bg-white px-4 py-3 text-sm font-semibold text-gray-900 shadow-xl transition hover:-translate-y-0.5 hover:border-indigo-100 hover:shadow-2xl"
+          className="inline-flex items-center gap-3 rounded-full border border-transparent bg-white dark:bg-gray-900 px-4 py-3 text-sm font-semibold text-gray-900 dark:text-gray-100 shadow-xl transition hover:-translate-y-0.5 hover:border-indigo-100 hover:shadow-2xl dark:hover:border-indigo-400/40"
         >
-          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-50">
+          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-50 dark:bg-indigo-600/30">
             <img src={waiterImage} alt="Chat with your waiter" className="h-8 w-8 rounded-full object-cover" />
           </span>
           Ask DineValley AI
