@@ -2,15 +2,16 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Bot, Loader2, Send, X } from "lucide-react";
 import {
   askAssistant,
+  AssistantUseCase,
   ChatHistoryItem,
   RestaurantContextPayload,
+  StructuredAssistantAnswer,
 } from "../api/assistant";
 import { fetchRestaurants } from "../api/restaurants";
 import { FilterOptions, Restaurant, createDefaultFilters } from "../../types";
 import waiterImage from "../assets/waiter.png";
 import {
   KNOWN_CUISINES,
-  KNOWN_DIETARY_OPTIONS,
   buildRestaurantQueryParams,
   cloneFilterOptions,
   filterRestaurantsClientSide,
@@ -26,6 +27,7 @@ const FALLBACK_IMAGE = "https://source.unsplash.com/160x160/?restaurant,food";
 
 type ChatMessage = ChatHistoryItem & {
   recommendations?: RestaurantContextPayload[];
+  structured?: StructuredAssistantAnswer;
 };
 
 const INITIAL_MESSAGE: ChatMessage = {
@@ -107,6 +109,17 @@ type ParsedFiltersResult = {
   searchTerm: string;
 };
 
+const detectAssistantUseCase = (question: string): AssistantUseCase => {
+  const normalized = question.toLowerCase();
+  if (/\b(filter|filters|sort|search|price|rating|cuisine|tags?)\b/.test(normalized)) {
+    return "filter_help";
+  }
+  if (/\bbug\b|\berror\b|\bhelp\b|\bhow (?:do|does)\b|\bapp\b|\bprofile\b/.test(normalized)) {
+    return "product_help";
+  }
+  return "restaurant_recs";
+};
+
 const deriveFiltersFromQuestion = (
   question: string,
   previousFilters: FilterOptions
@@ -121,13 +134,6 @@ const deriveFiltersFromQuestion = (
   );
   if (mentionedCuisines.length) {
     filters.cuisines = Array.from(new Set(mentionedCuisines));
-  }
-
-  const dietaryMatches = KNOWN_DIETARY_OPTIONS.filter((option) =>
-    normalized.includes(option.toLowerCase())
-  );
-  if (dietaryMatches.length) {
-    filters.dietary = Array.from(new Set([...filters.dietary, ...dietaryMatches]));
   }
 
   const priceSymbols = question.match(/\${1,4}/g);
@@ -175,7 +181,7 @@ const deriveFiltersFromQuestion = (
   }
 
   const keywordSet = new Set<string>();
-  [...filters.cuisines, ...filters.dietary].forEach((item) => keywordSet.add(item.toLowerCase()));
+  [...filters.cuisines].forEach((item) => keywordSet.add(item.toLowerCase()));
   semanticTokens.slice(0, 5).forEach((token) => keywordSet.add(token));
 
   const searchTerm = semanticTokens.join(" ") || filters.cuisines[0] || question;
@@ -187,8 +193,8 @@ const deriveFiltersFromQuestion = (
   };
 };
 
-const toContextPayloadList = (items: Restaurant[]): RestaurantContextPayload[] =>
-  items.slice(0, 8).map(toContextPayload);
+const toContextPayloadList = (items: Restaurant[], limit = 24): RestaurantContextPayload[] =>
+  items.slice(0, limit).map(toContextPayload);
 
 const toContextPayload = (restaurant: Restaurant): RestaurantContextPayload => ({
   id: restaurant.id,
@@ -202,6 +208,17 @@ const toContextPayload = (restaurant: Restaurant): RestaurantContextPayload => (
   isFavorite: Boolean(restaurant.isFavorite),
   imageUrl: restaurant.imageUrl,
 });
+
+const combineRestaurantLists = (...lists: Restaurant[][]): Restaurant[] => {
+  const map = new Map<string, Restaurant>();
+  lists.forEach((list) => {
+    list?.forEach((restaurant) => {
+      if (!restaurant?.id || map.has(restaurant.id)) return;
+      map.set(restaurant.id, restaurant);
+    });
+  });
+  return Array.from(map.values());
+};
 
 const extractRecommendations = (
   answer: string,
@@ -234,6 +251,44 @@ const formatPriceLevel = (level?: number | null) => {
   if (!Number.isFinite(level)) return null;
   const value = Math.max(1, Math.min(4, Math.round(level as number)));
   return "$".repeat(value);
+};
+
+const AssistantStructuredContent: React.FC<{
+  structured: StructuredAssistantAnswer;
+  fallback: string;
+}> = ({ structured, fallback }) => {
+  const { summary, highlights, filters, followUp } = structured;
+  const hasStructure = Boolean(summary) || (highlights?.length ?? 0) > 0 || (filters?.length ?? 0) > 0 || Boolean(followUp);
+
+  if (!hasStructure) {
+    return <>{fallback}</>;
+  }
+
+  return (
+    <div className="space-y-2 text-left text-sm">
+      {summary && <p className="font-semibold text-gray-900 dark:text-gray-100">{summary}</p>}
+      {highlights && highlights.length > 0 && (
+        <ul className="list-disc space-y-1 pl-4 text-xs text-gray-600 dark:text-gray-300">
+          {highlights.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      )}
+      {filters && filters.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {filters.map((filter) => (
+            <span
+              key={filter}
+              className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-600 dark:bg-indigo-600/30 dark:text-indigo-100"
+            >
+              {filter}
+            </span>
+          ))}
+        </div>
+      )}
+      {followUp && <p className="text-xs text-gray-500 dark:text-gray-400">{followUp}</p>}
+    </div>
+  );
 };
 
 export const AssistantChatWidget: React.FC<Props> = ({ restaurants, onSelectRestaurant }) => {
@@ -287,6 +342,8 @@ export const AssistantChatWidget: React.FC<Props> = ({ restaurants, onSelectRest
       setIsSending(true);
       setError(null);
 
+      const useCase = detectAssistantUseCase(question);
+
       try {
         const queryParams = buildRestaurantQueryParams(parsed.filters, parsed.searchTerm);
         const data = await fetchRestaurants(queryParams);
@@ -302,18 +359,33 @@ export const AssistantChatWidget: React.FC<Props> = ({ restaurants, onSelectRest
         console.warn("Assistant context fetch failed", contextError);
       }
 
-      const context = toContextPayloadList(contextSource.length ? contextSource : restaurants);
+      const mergedContext = combineRestaurantLists(
+        contextSource.length ? contextSource : [],
+        restaurants,
+        fetchedRestaurants,
+        effectiveRestaurants
+      );
+      const context = toContextPayloadList(
+        mergedContext.length ? mergedContext : restaurants
+      );
 
       try {
-        const response = await askAssistant(question, historyForApi, context, {
-          keywords: parsed.keywords,
-        });
+        const response = await askAssistant(
+          question,
+          historyForApi,
+          context,
+          {
+            keywords: parsed.keywords,
+          },
+          { useCase }
+        );
         const recommendations = extractRecommendations(response.answer, context);
         setMessages((prev) => [
           ...prev,
           {
             role: "assistant",
             content: response.answer,
+            structured: response.structured,
             recommendations: recommendations.length ? recommendations : undefined,
           },
         ]);
@@ -380,7 +452,11 @@ export const AssistantChatWidget: React.FC<Props> = ({ restaurants, onSelectRest
                         : "bg-indigo-600 text-white shadow"
                     }`}
                   >
-                    {message.content}
+                    {message.role === "assistant" && message.structured ? (
+                      <AssistantStructuredContent structured={message.structured} fallback={message.content} />
+                    ) : (
+                      message.content
+                    )}
                   </div>
                 </div>
                 {message.recommendations && message.recommendations.length > 0 && (

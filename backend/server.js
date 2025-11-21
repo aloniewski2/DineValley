@@ -39,7 +39,7 @@ app.set("trust proxy", 1);
 app.use(express.json({ limit: "1mb" }));
 
 const PORT = process.env.PORT || 5050;
-const API_KEY = process.env.GOOGLE_PLACES_API_KEY;
+const API_KEY = (process.env.GOOGLE_PLACES_API_KEY || "").trim();
 const DEFAULT_LOCATION = "40.6084,-75.4902";
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const DEFAULT_GROQ_MODEL = "llama-3.1-8b-instant";
@@ -52,6 +52,8 @@ if (!API_KEY) {
   console.error("❌ ERROR: GOOGLE_PLACES_API_KEY is missing in .env");
   process.exit(1);
 }
+
+console.log("[Config] Places API key detected (length):", API_KEY.length);
 
 if (!GROQ_API_KEY) {
   console.warn("⚠️ WARNING: GROQ_API_KEY is missing. The AI assistant endpoint will be unavailable.");
@@ -260,6 +262,8 @@ app.get("/restaurant/:id", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch restaurant details", details: message });
   }
 });
+
+
 
 // ✅ Restaurant photo proxy
 app.get("/place-photo/:reference", async (req, res) => {

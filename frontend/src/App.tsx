@@ -446,6 +446,7 @@ export const App = () => {
             onToggleFavorite={handleToggleFavorite}
             onCheckIn={handleCheckIn}
             visitInfo={visitStats[selectedRestaurantId]}
+            comparisonPool={restaurants}
           />
         );
       default:

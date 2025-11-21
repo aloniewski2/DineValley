@@ -7,10 +7,6 @@ const ALL_CUISINES = [
   "American", "Italian", "Mexican", "Chinese", "Japanese", "Indian", "Thai", "French"
 ];
 const ALL_PRICE_RANGES = ["$", "$$", "$$$", "$$$$"];
-const ALL_DIETARY = [
-  "Vegetarian", "Vegan", "Gluten-Free", "Dairy-Free",
-  "Nut-Free", "Egg-Free", "Soy-Free", "Shellfish-Free"
-];
 
 interface FilterModelProps {
   open: boolean;
@@ -43,7 +39,6 @@ export const FilterModel: React.FC<FilterModelProps> = ({
       ...local,
       cuisines: [...local.cuisines],
       priceRanges: [...local.priceRanges],
-      dietary: [...local.dietary],
     });
     onClose();
   };
@@ -164,31 +159,6 @@ export const FilterModel: React.FC<FilterModelProps> = ({
             <p className="mt-1 text-xs text-gray-500">
               Adjust to search within a specific radius of the Lehigh Valley.
             </p>
-          </div>
-
-          {/* Dietary Restrictions */}
-          <div className="mb-4">
-            <label className="block font-semibold mb-1">
-              Dietary Restrictions / Allergens
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {ALL_DIETARY.map(option => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() =>
-                    update({ dietary: toggleArr(local.dietary, option) })
-                  }
-                  className={`rounded-full px-4 py-1 text-xs border font-medium transition-colors ${
-                    local.dietary.includes(option)
-                      ? "bg-black text-white border-black"
-                      : "bg-white text-gray-700 border-gray-300 hover:bg-black hover:text-white"
-                  }`}
-                >
-                  {option}
-                </button>
-              ))}
-            </div>
           </div>
 
           {/* Actions */}

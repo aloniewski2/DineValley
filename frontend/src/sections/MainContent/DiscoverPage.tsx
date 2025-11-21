@@ -52,7 +52,6 @@ export const DiscoverPage = ({
             ...createDefaultFilters(),
             cuisines: Array.isArray(parsed?.cuisines) ? [...parsed.cuisines] : [...DEFAULT_FILTERS.cuisines],
             priceRanges: Array.isArray(parsed?.priceRanges) ? [...parsed.priceRanges] : [...DEFAULT_FILTERS.priceRanges],
-            dietary: Array.isArray(parsed?.dietary) ? [...parsed.dietary] : [...DEFAULT_FILTERS.dietary],
             minRating: Number.isFinite(Number(parsed?.minRating))
               ? Number(parsed.minRating)
               : DEFAULT_FILTERS.minRating,
@@ -77,7 +76,6 @@ export const DiscoverPage = ({
       ...next,
       cuisines: [...next.cuisines],
       priceRanges: [...next.priceRanges],
-      dietary: [...next.dietary],
     });
   }, []);
 

@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { Dialog } from "@headlessui/react";
 import { Restaurant, RestaurantDetails, VisitStatsEntry } from "../../../types";
-import { Heart, Globe, Phone, Navigation, MapPin, CheckCircle2 } from "lucide-react";
+import { Heart, Globe, Phone, Navigation, MapPin, CheckCircle2, Sparkles } from "lucide-react";
 import { StatusBanner } from "../../components/StatusBanner";
+import { askAssistant, ComparisonResult, RestaurantContextPayload } from "../../api/assistant";
 
 export interface RestaurantDetailsPageProps {
   restaurantId: string;
@@ -14,6 +15,7 @@ export interface RestaurantDetailsPageProps {
   onToggleFavorite: (id: string) => void;
   onCheckIn: (restaurant: Restaurant) => void;
   visitInfo?: VisitStatsEntry;
+  comparisonPool?: Restaurant[];
 }
 
 export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
@@ -26,6 +28,7 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
   onToggleFavorite,
   onCheckIn,
   visitInfo,
+  comparisonPool,
 }) => {
   const display = useMemo(() => {
     if (details) {
@@ -92,6 +95,143 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
   const [menuOpen, setMenuOpen] = useState(false);
   const [popupBlocked, setPopupBlocked] = useState(false);
   const menuUrl = details?.website ?? null;
+
+  const displayAsRestaurant = useMemo(() => {
+    if (!display) return null;
+    return {
+      id: display.id,
+      name: display.name,
+      imageUrl: display.imageUrl || fallbackRestaurant?.imageUrl || "",
+      rating: display.rating,
+      reviewCount: display.reviewCount,
+      address: display.address,
+      priceLevel: display.priceLevel,
+      businessStatus: fallbackRestaurant?.businessStatus ?? "UNKNOWN",
+      types: details?.types ?? fallbackRestaurant?.types ?? [],
+      dietary: fallbackRestaurant?.dietary ?? [],
+      isFavorite: display.isFavorite,
+    } as Restaurant;
+  }, [details?.types, display, fallbackRestaurant]);
+
+  const [comparisonSelection, setComparisonSelection] = useState<string[]>(
+    display?.id ? [display.id] : []
+  );
+  const [comparisonResult, setComparisonResult] = useState<ComparisonResult | null>(null);
+  const [comparisonLoading, setComparisonLoading] = useState(false);
+  const [comparisonError, setComparisonError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setComparisonSelection(display?.id ? [display.id] : []);
+    setComparisonResult(null);
+    setComparisonError(null);
+  }, [display?.id]);
+
+  const comparisonCandidates = useMemo(() => {
+    if (!comparisonPool?.length) return [] as Restaurant[];
+    const map = new Map<string, Restaurant>();
+    comparisonPool.forEach((restaurant) => {
+      if (!restaurant?.id || restaurant.id === display?.id) return;
+      if (!map.has(restaurant.id)) {
+        map.set(restaurant.id, restaurant);
+      }
+    });
+    return Array.from(map.values()).slice(0, 12);
+  }, [comparisonPool, display?.id]);
+
+  const resolveRestaurantById = useCallback(
+    (id: string): Restaurant | null => {
+      if (displayAsRestaurant && displayAsRestaurant.id === id) {
+        return displayAsRestaurant;
+      }
+      return comparisonPool?.find((restaurant) => restaurant.id === id) ?? null;
+    },
+    [comparisonPool, displayAsRestaurant]
+  );
+
+  const toggleComparisonSelection = (id: string) => {
+    setComparisonSelection((prev) => {
+      if (prev.includes(id)) {
+        return prev.filter((value) => value !== id);
+      }
+      if (prev.length >= 5) {
+        return prev;
+      }
+      return [...prev, id];
+    });
+  };
+
+  const comparisonLimitReached = comparisonSelection.length >= 5;
+
+  const toContextPayload = (restaurant: Restaurant): RestaurantContextPayload => ({
+    id: restaurant.id,
+    name: restaurant.name,
+    rating: restaurant.rating,
+    reviewCount: restaurant.reviewCount,
+    address: restaurant.address,
+    priceLevel: restaurant.priceLevel,
+    types: Array.isArray(restaurant.types) ? restaurant.types.slice(0, 6) : [],
+    dietary: restaurant.dietary,
+    isFavorite: Boolean(restaurant.isFavorite),
+    imageUrl: restaurant.imageUrl,
+  });
+
+  const buildComparisonPrompt = (restaurants: Restaurant[]): string => {
+    return restaurants
+      .map((restaurant, index) => {
+        const typeText = (restaurant.types ?? [])
+          .slice(0, 3)
+          .map((type) => type.replace(/_/g, " "))
+          .join(", ");
+        const dietaryText = (restaurant.dietary ?? [])
+          .slice(0, 2)
+          .join(", ");
+        const priceSymbol = restaurant.priceLevel ? "$".repeat(restaurant.priceLevel) : "?";
+        return `${index + 1}. ${restaurant.name} — Rating ${restaurant.rating ?? "N/A"} (${restaurant.reviewCount ?? 0} reviews), Price ${priceSymbol}, Tags: ${[
+          typeText,
+          dietaryText,
+        ]
+          .filter(Boolean)
+          .join(" • ")}`;
+      })
+      .join("\n");
+  };
+
+  const handleRunComparison = useCallback(async () => {
+    const selected = comparisonSelection
+      .map((id) => resolveRestaurantById(id))
+      .filter((value): value is Restaurant => Boolean(value))
+      .slice(0, 5);
+
+    if (selected.length < 2) {
+      setComparisonError("Select at least two restaurants to compare.");
+      return;
+    }
+
+    setComparisonLoading(true);
+    setComparisonError(null);
+    setComparisonResult(null);
+
+    try {
+      const prompt = `Compare these restaurants across value, dietary breadth, group friendliness, popular dishes, and speed. Base everything on the provided context.\n${buildComparisonPrompt(
+        selected
+      )}`;
+      const contextPayload = selected.map(toContextPayload);
+      const response = await askAssistant(prompt, [], contextPayload, undefined, { useCase: "comparison_tool" });
+      if (response.comparison) {
+        setComparisonResult(response.comparison);
+      } else {
+        setComparisonError("The comparison tool could not find enough info. Try selecting different restaurants.");
+      }
+    } catch (comparisonErr) {
+      console.error("Comparison request failed", comparisonErr);
+      setComparisonError(
+        comparisonErr instanceof Error ? comparisonErr.message : "Unable to compare right now. Please try again."
+      );
+    } finally {
+      setComparisonLoading(false);
+    }
+  }, [comparisonSelection, resolveRestaurantById]);
+
 
   useEffect(() => {
     setPhotoIndex(0);
@@ -334,6 +474,108 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
           ))}
         </div>
       )}
+
+      <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg mb-6 transition-colors duration-300">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Instant comparison tool</p>
+            <h2 className="font-semibold flex items-center gap-2 text-gray-900 dark:text-gray-100">
+              <Sparkles size={16} className="text-indigo-500" /> Decide faster
+            </h2>
+          </div>
+          <span className="text-xs text-gray-500 dark:text-gray-400">
+            {comparisonSelection.length}/5 selected
+          </span>
+        </div>
+        <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+          Choose up to four more restaurants to see who wins categories like value, dietary options, group-friendly vibes, popular dishes, and quick service.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {comparisonSelection.map((id) => {
+            const restaurant = resolveRestaurantById(id);
+            if (!restaurant) return null;
+            return (
+              <span
+                key={id}
+                className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+              >
+                {restaurant.name}
+              </span>
+            );
+          })}
+        </div>
+        {comparisonCandidates.length > 0 ? (
+          <div className="mt-4 space-y-2">
+            <p className="text-xs text-gray-500 dark:text-gray-400">Add restaurants to compare:</p>
+            <div className="flex flex-wrap gap-2">
+              {comparisonCandidates.map((candidate) => {
+                const checked = comparisonSelection.includes(candidate.id);
+                const disabled = !checked && comparisonLimitReached;
+                return (
+                  <label
+                    key={candidate.id}
+                    className={`cursor-pointer rounded-full border px-3 py-1 text-xs font-medium transition ${
+                      checked
+                        ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-600/30 dark:text-indigo-100"
+                        : "border-gray-200 text-gray-600 dark:border-gray-700 dark:text-gray-300"
+                    } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="sr-only"
+                      checked={checked}
+                      disabled={disabled}
+                      onChange={() => toggleComparisonSelection(candidate.id)}
+                    />
+                    {candidate.name}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">
+            Save or view a few more restaurants to unlock comparisons.
+          </p>
+        )}
+        <div className="mt-4 flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={handleRunComparison}
+            disabled={comparisonSelection.length < 2 || comparisonLoading}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-300"
+          >
+            {comparisonLoading ? "Comparing..." : "Compare now"}
+          </button>
+          {comparisonSelection.length < 2 && (
+            <p className="text-xs text-gray-500 dark:text-gray-400">Pick at least two restaurants.</p>
+          )}
+          {comparisonError && <p className="text-xs text-red-500">{comparisonError}</p>}
+        </div>
+        {comparisonResult && (
+          <div className="mt-4 space-y-3">
+            {comparisonResult.overview && (
+              <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{comparisonResult.overview}</p>
+            )}
+            {comparisonResult.insights?.length ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {comparisonResult.insights.map((insight) => (
+                  <div
+                    key={`${insight.category}-${insight.winner}`}
+                    className="rounded-xl border border-gray-200 bg-white p-3 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-900"
+                  >
+                    <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">{insight.category}</p>
+                    <p className="text-base font-semibold text-gray-900 dark:text-gray-100">{insight.winner}</p>
+                    <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">{insight.rationale}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-500 dark:text-gray-400">No insights returned.</p>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* About Section */}
       <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg mb-6 transition-colors duration-300">

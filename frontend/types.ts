@@ -48,7 +48,6 @@ export interface FilterOptions {
   cuisines: string[];
   priceRanges: string[];
   minRating: number;
-  dietary: string[];
   openNow: boolean;
   distanceMiles: number;
 }
@@ -83,7 +82,6 @@ export const DEFAULT_FILTERS: FilterOptions = {
   cuisines: [],
   priceRanges: [],
   minRating: 0,
-  dietary: [],
   openNow: false,
   distanceMiles: 10,
 };
@@ -92,5 +90,4 @@ export const createDefaultFilters = (): FilterOptions => ({
   ...DEFAULT_FILTERS,
   cuisines: [...DEFAULT_FILTERS.cuisines],
   priceRanges: [...DEFAULT_FILTERS.priceRanges],
-  dietary: [...DEFAULT_FILTERS.dietary],
 });

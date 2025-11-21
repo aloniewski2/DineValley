@@ -26,17 +26,6 @@ export const KNOWN_CUISINES = [
   "Steakhouse",
 ];
 
-export const KNOWN_DIETARY_OPTIONS = [
-  "Vegetarian",
-  "Vegan",
-  "Gluten-Free",
-  "Dairy-Free",
-  "Nut-Free",
-  "Egg-Free",
-  "Soy-Free",
-  "Shellfish-Free",
-];
-
 export const PRICE_RANGE_TO_LEVEL: Record<string, number> = {
   "$": 1,
   "$$": 2,
@@ -48,7 +37,6 @@ export const cloneFilterOptions = (filters: FilterOptions): FilterOptions => ({
   ...filters,
   cuisines: [...filters.cuisines],
   priceRanges: [...filters.priceRanges],
-  dietary: [...filters.dietary],
 });
 
 export const buildRestaurantQueryParams = (filters: FilterOptions, search: string) => {
@@ -79,19 +67,6 @@ export const buildRestaurantQueryParams = (filters: FilterOptions, search: strin
 };
 
 export const filterRestaurantsClientSide = (restaurants: Restaurant[], filters: FilterOptions) => {
-  const normalize = (value: string) => value.replace(/_/g, " ").toLowerCase();
-
-  const dietaryFilters = filters.dietary.map((item) => normalize(item));
   const minRating = filters.minRating;
-
-  return restaurants.filter((restaurant) => {
-    const dietary = (restaurant.dietary ?? []).map(normalize);
-
-    const matchesRating = (restaurant.rating ?? 0) >= minRating;
-    const matchesDietary =
-      dietaryFilters.length === 0 ||
-      (dietary.length > 0 && dietaryFilters.every((option) => dietary.includes(option)));
-
-    return matchesRating && matchesDietary;
-  });
+  return restaurants.filter((restaurant) => (restaurant.rating ?? 0) >= minRating);
 };
