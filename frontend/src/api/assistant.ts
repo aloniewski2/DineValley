@@ -16,6 +16,13 @@ export type AssistantUseCase =
   | "product_help"
   | "comparison_tool";
 
+export type ReviewContextPayload = {
+  text: string;
+  rating?: number;
+  authorName?: string;
+  relativeTimeDescription?: string;
+};
+
 export type RestaurantContextPayload = Pick<
   Restaurant,
   | "id"
@@ -28,7 +35,9 @@ export type RestaurantContextPayload = Pick<
   | "dietary"
   | "isFavorite"
   | "imageUrl"
->;
+> & {
+  reviews?: ReviewContextPayload[];
+};
 
 export interface AssistantResponse {
   answer: string;
@@ -42,6 +51,7 @@ export interface AssistantFiltersPayload {
 
 export interface AssistantRequestOptions {
   useCase?: AssistantUseCase;
+  focusRestaurantId?: string;
 }
 
 export interface StructuredAssistantAnswer {
@@ -191,6 +201,7 @@ export const askAssistant = async (
   const payload: Record<string, unknown> = {
     question: buildGuidedQuestion(trimmedQuestion, options?.useCase),
     userQuestion: trimmedQuestion,
+    useCase: options?.useCase,
   };
 
   if (history.length) {
@@ -205,6 +216,10 @@ export const askAssistant = async (
     payload.filters = {
       keywords: filters.keywords?.slice(0, 6),
     };
+  }
+
+  if (options?.focusRestaurantId) {
+    payload.focusRestaurantId = options.focusRestaurantId;
   }
 
   const startedAt = performance.now?.() ?? Date.now();

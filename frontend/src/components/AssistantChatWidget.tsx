@@ -5,10 +5,11 @@ import {
   AssistantUseCase,
   ChatHistoryItem,
   RestaurantContextPayload,
+  ReviewContextPayload,
   StructuredAssistantAnswer,
 } from "../api/assistant";
 import { fetchRestaurants } from "../api/restaurants";
-import { FilterOptions, Restaurant, createDefaultFilters } from "../../types";
+import { FilterOptions, Restaurant, RestaurantDetails, RestaurantReview, createDefaultFilters } from "../../types";
 import waiterImage from "../assets/waiter.png";
 import {
   KNOWN_CUISINES,
@@ -21,6 +22,8 @@ import { useLocalStorage } from "../hooks/useLocalStorage";
 type Props = {
   restaurants: Restaurant[];
   onSelectRestaurant?: (restaurant: Restaurant) => void;
+  activeRestaurant?: Restaurant | null;
+  activeRestaurantDetails?: RestaurantDetails | null;
 };
 
 const FALLBACK_IMAGE = "https://source.unsplash.com/160x160/?restaurant,food";
@@ -86,6 +89,8 @@ const STOP_WORDS = new Set([
   "option",
   "options",
 ]);
+
+const MAX_REVIEW_TEXT_LENGTH = 320;
 
 const PRICE_WORD_MAP: Record<string, string[]> = {
   cheap: ["$"],
@@ -193,21 +198,47 @@ const deriveFiltersFromQuestion = (
   };
 };
 
-const toContextPayloadList = (items: Restaurant[], limit = 24): RestaurantContextPayload[] =>
-  items.slice(0, limit).map(toContextPayload);
+const clampRating = (value: number) => Math.min(Math.max(value, 0), 5);
 
-const toContextPayload = (restaurant: Restaurant): RestaurantContextPayload => ({
-  id: restaurant.id,
-  name: restaurant.name,
-  rating: restaurant.rating,
-  reviewCount: restaurant.reviewCount,
-  address: restaurant.address,
-  priceLevel: restaurant.priceLevel,
-  types: Array.isArray(restaurant.types) ? restaurant.types.slice(0, 6) : [],
-  dietary: Array.isArray(restaurant.dietary) ? restaurant.dietary.slice(0, 6) : undefined,
-  isFavorite: Boolean(restaurant.isFavorite),
-  imageUrl: restaurant.imageUrl,
-});
+const toReviewPayload = (review: RestaurantReview): ReviewContextPayload | null => {
+  const text = typeof review.text === "string" ? review.text.trim() : "";
+  if (!text) return null;
+  return {
+    text: text.slice(0, MAX_REVIEW_TEXT_LENGTH),
+    rating: Number.isFinite(review.rating) ? clampRating(review.rating) : undefined,
+    authorName: typeof review.authorName === "string" ? review.authorName.trim().slice(0, 80) : undefined,
+    relativeTimeDescription:
+      typeof review.relativeTimeDescription === "string"
+        ? review.relativeTimeDescription.trim().slice(0, 60)
+        : undefined,
+  };
+};
+
+const toContextPayloadList = (
+  items: Restaurant[],
+  limit = 24,
+  reviewMap?: Map<string, ReviewContextPayload[]>
+): RestaurantContextPayload[] => items.slice(0, limit).map((restaurant) => toContextPayload(restaurant, reviewMap));
+
+const toContextPayload = (
+  restaurant: Restaurant,
+  reviewMap?: Map<string, ReviewContextPayload[]>
+): RestaurantContextPayload => {
+  const reviews = reviewMap?.get(restaurant.id);
+  return {
+    id: restaurant.id,
+    name: restaurant.name,
+    rating: restaurant.rating,
+    reviewCount: restaurant.reviewCount,
+    address: restaurant.address,
+    priceLevel: restaurant.priceLevel,
+    types: Array.isArray(restaurant.types) ? restaurant.types.slice(0, 6) : [],
+    dietary: Array.isArray(restaurant.dietary) ? restaurant.dietary.slice(0, 6) : undefined,
+    isFavorite: Boolean(restaurant.isFavorite),
+    imageUrl: restaurant.imageUrl,
+    reviews: reviews?.length ? reviews.slice(0, 4) : undefined,
+  };
+};
 
 const combineRestaurantLists = (...lists: Restaurant[][]): Restaurant[] => {
   const map = new Map<string, Restaurant>();
@@ -220,9 +251,18 @@ const combineRestaurantLists = (...lists: Restaurant[][]): Restaurant[] => {
   return Array.from(map.values());
 };
 
+const wantsMultiple = (question: string) =>
+  /\b(two|three|few|couple|options|alternatives|another|others|more)\b/i.test(question);
+
+const isFollowUpOnSameRestaurant = (question: string) =>
+  /\b(this (place|restaurant)|here|it|dish|menu|address|hours?|phone|number|directions?|parking|reservation|price|cost|service|ambiance)\b/i.test(
+    question
+  );
+
 const extractRecommendations = (
   answer: string,
-  candidates: RestaurantContextPayload[]
+  candidates: RestaurantContextPayload[],
+  allowMultiple: boolean
 ): RestaurantContextPayload[] => {
   const normalizedAnswer = normalize(answer);
   if (!normalizedAnswer) return [];
@@ -244,7 +284,7 @@ const extractRecommendations = (
     }
   });
 
-  return unique;
+  return allowMultiple ? unique : unique.slice(0, 1);
 };
 
 const formatPriceLevel = (level?: number | null) => {
@@ -291,12 +331,18 @@ const AssistantStructuredContent: React.FC<{
   );
 };
 
-export const AssistantChatWidget: React.FC<Props> = ({ restaurants, onSelectRestaurant }) => {
+export const AssistantChatWidget: React.FC<Props> = ({
+  restaurants,
+  onSelectRestaurant,
+  activeRestaurant,
+  activeRestaurantDetails,
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([INITIAL_MESSAGE]);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastRecommendationId, setLastRecommendationId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [chatFilters, setChatFilters] = useLocalStorage<FilterOptions>(
     "assistantChatFilters",
@@ -304,14 +350,53 @@ export const AssistantChatWidget: React.FC<Props> = ({ restaurants, onSelectRest
   );
   const [fetchedRestaurants, setFetchedRestaurants] = useState<Restaurant[]>([]);
 
+  const activeRestaurantFromDetails = useMemo(() => {
+    if (!activeRestaurantDetails) return null;
+    const fallback =
+      activeRestaurant ??
+      restaurants.find((restaurant) => restaurant.id === activeRestaurantDetails.id) ??
+      fetchedRestaurants.find((restaurant) => restaurant.id === activeRestaurantDetails.id) ??
+      null;
+
+    return {
+      id: activeRestaurantDetails.id,
+      name: activeRestaurantDetails.name,
+      imageUrl: activeRestaurantDetails.imageUrl || fallback?.imageUrl || FALLBACK_IMAGE,
+      rating: activeRestaurantDetails.rating ?? fallback?.rating ?? 0,
+      reviewCount: fallback?.reviewCount ?? activeRestaurantDetails.reviewSummary?.total ?? 0,
+      address: activeRestaurantDetails.address || fallback?.address || "",
+      priceLevel: fallback?.priceLevel ?? null,
+      businessStatus: fallback?.businessStatus ?? "UNKNOWN",
+      types: activeRestaurantDetails.types ?? fallback?.types ?? [],
+      dietary: fallback?.dietary,
+      isFavorite: fallback?.isFavorite ?? false,
+    } as Restaurant;
+  }, [activeRestaurantDetails, activeRestaurant, restaurants, fetchedRestaurants]);
+
+  const activeReviewMap = useMemo(() => {
+    if (!activeRestaurantDetails?.id || !Array.isArray(activeRestaurantDetails.reviews)) return undefined;
+    const sanitized = activeRestaurantDetails.reviews
+      .map(toReviewPayload)
+      .filter((review): review is ReviewContextPayload => Boolean(review))
+      .slice(0, 4);
+    if (!sanitized.length) return undefined;
+    return new Map([[activeRestaurantDetails.id, sanitized]]);
+  }, [activeRestaurantDetails]);
+
   const effectiveRestaurants = fetchedRestaurants.length ? fetchedRestaurants : restaurants;
 
   const restaurantLookup = useMemo(() => {
     const map = new Map<string, Restaurant>();
     restaurants.forEach((restaurant) => map.set(restaurant.id, restaurant));
     fetchedRestaurants.forEach((restaurant) => map.set(restaurant.id, restaurant));
+    if (activeRestaurant) {
+      map.set(activeRestaurant.id, activeRestaurant);
+    }
+    if (activeRestaurantFromDetails) {
+      map.set(activeRestaurantFromDetails.id, activeRestaurantFromDetails);
+    }
     return map;
-  }, [restaurants, fetchedRestaurants]);
+  }, [restaurants, fetchedRestaurants, activeRestaurant, activeRestaurantFromDetails]);
 
   useEffect(() => {
     if (!isOpen || !scrollRef.current) return;
@@ -343,6 +428,10 @@ export const AssistantChatWidget: React.FC<Props> = ({ restaurants, onSelectRest
       setError(null);
 
       const useCase = detectAssistantUseCase(question);
+      const followUp = isFollowUpOnSameRestaurant(question);
+      if (!followUp) {
+        setLastRecommendationId(null);
+      }
 
       try {
         const queryParams = buildRestaurantQueryParams(parsed.filters, parsed.searchTerm);
@@ -360,13 +449,16 @@ export const AssistantChatWidget: React.FC<Props> = ({ restaurants, onSelectRest
       }
 
       const mergedContext = combineRestaurantLists(
+        activeRestaurantFromDetails ? [activeRestaurantFromDetails] : [],
         contextSource.length ? contextSource : [],
         restaurants,
         fetchedRestaurants,
         effectiveRestaurants
       );
       const context = toContextPayloadList(
-        mergedContext.length ? mergedContext : restaurants
+        mergedContext.length ? mergedContext : restaurants,
+        24,
+        activeReviewMap
       );
 
       try {
@@ -377,9 +469,43 @@ export const AssistantChatWidget: React.FC<Props> = ({ restaurants, onSelectRest
           {
             keywords: parsed.keywords,
           },
-          { useCase }
+          {
+            useCase,
+            focusRestaurantId:
+              activeRestaurantFromDetails?.id ||
+              (followUp && !wantsMultiple(question) ? lastRecommendationId ?? undefined : undefined),
+          }
         );
-        const recommendations = extractRecommendations(response.answer, context);
+        const allowMultiple = wantsMultiple(question);
+        let recommendations = extractRecommendations(response.answer, context, allowMultiple);
+        if (!recommendations.length && response.structured?.highlights?.length) {
+          const combined = response.structured.highlights.join(" ");
+          const highlightMatches = extractRecommendations(combined, context, allowMultiple);
+          if (highlightMatches.length) {
+            recommendations = highlightMatches;
+          }
+        }
+        if (!recommendations.length && followUp && lastRecommendationId) {
+          const last = context.find((item) => item.id === lastRecommendationId);
+          if (last) {
+            recommendations = [last];
+          }
+        }
+        if (!recommendations.length && useCase === "restaurant_recs" && context.length) {
+          recommendations = [...context]
+            .sort((a, b) => {
+              const ratingA = Number.isFinite(a.rating) ? (a.rating as number) : 0;
+              const ratingB = Number.isFinite(b.rating) ? (b.rating as number) : 0;
+              if (ratingA !== ratingB) return ratingB - ratingA;
+              const reviewsA = Number.isFinite(a.reviewCount) ? (a.reviewCount as number) : 0;
+              const reviewsB = Number.isFinite(b.reviewCount) ? (b.reviewCount as number) : 0;
+              return reviewsB - reviewsA;
+            })
+            .slice(0, allowMultiple ? 3 : 1);
+        }
+        if (recommendations.length) {
+          setLastRecommendationId(recommendations[0].id);
+        }
         setMessages((prev) => [
           ...prev,
           {

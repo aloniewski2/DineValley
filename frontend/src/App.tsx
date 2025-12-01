@@ -8,7 +8,37 @@ import { Restaurant, RestaurantDetails, VisitRecord, VisitSnapshot, VisitStatsMa
 import { fetchRestaurants, fetchRestaurantDetails } from "./api/restaurants";
 import { useLocalStorage } from "./hooks/useLocalStorage";
 import { AssistantChatWidget } from "./components/AssistantChatWidget";
+import { KNOWN_CUISINES } from "./utils/restaurantFilters";
 
+const SHUFFLE_KEYWORDS = [
+  "restaurant",
+  "diner",
+  "pizza",
+  "bbq",
+  "tacos",
+  "sushi",
+  "steak",
+  "seafood",
+  "vegan",
+  "italian",
+  "indian",
+  "thai",
+  "mexican",
+  "burgers",
+  "cafe",
+  "noodles",
+  "pasta",
+  ...KNOWN_CUISINES.slice(0, 10),
+];
+
+const shuffleArray = <T,>(items: T[]): T[] => {
+  const array = [...items];
+  for (let i = array.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
+};
 export type Page = "discover" | "recommendations" | "profile" | "restaurant-details";
 type Theme = "light" | "dark";
 
@@ -16,6 +46,7 @@ export const App = () => {
   const [currentPage, setCurrentPage] = useState<Page>("discover");
   const [selectedRestaurantId, setSelectedRestaurantId] = useState<string | null>(null);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const [nextPageToken, setNextPageToken] = useState<string | null>(null);
   const [selectedRestaurantSnapshot, setSelectedRestaurantSnapshot] = useState<Restaurant | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState<string | null>(null);
@@ -109,19 +140,19 @@ export const App = () => {
     [buildVisitSnapshot, setVisitHistory]
   );
 
-  // Load restaurants once on startup
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const data = await fetchRestaurants({ keyword: "restaurant" });
-        console.log("Fetched restaurants:", data);
-        setRestaurants(data.results);
-      } catch (err) {
-        console.error("Failed to load restaurants", err);
-      }
-    };
-    load();
+  const loadRestaurants = useCallback(async () => {
+    try {
+      const data = await fetchRestaurants({ keyword: "restaurant" });
+      setRestaurants(data.results);
+      setNextPageToken(data.nextPageToken);
+    } catch (err) {
+      console.error("Failed to load restaurants", err);
+    }
   }, []);
+
+  useEffect(() => {
+    loadRestaurants();
+  }, [loadRestaurants]);
 
   useEffect(() => {
     if (!selectedRestaurantId || currentPage !== "restaurant-details") {
@@ -401,9 +432,6 @@ export const App = () => {
             onSelectRestaurant={handleSelectRestaurant}
             onToggleFavorite={handleToggleFavorite}
             favorites={favoriteIds}
-            recentlyViewed={recentRestaurants}
-            visitHistory={visitHistory}
-            visitStats={visitStats}
             onCheckIn={handleCheckIn}
             theme={theme}
             onToggleTheme={toggleTheme}
@@ -472,7 +500,12 @@ export const App = () => {
           {renderPage()}
         </div>
       </div>
-      <AssistantChatWidget restaurants={restaurants} onSelectRestaurant={handleSelectRestaurant} />
+      <AssistantChatWidget
+        restaurants={restaurants}
+        onSelectRestaurant={handleSelectRestaurant}
+        activeRestaurant={selectedRestaurantSnapshot}
+        activeRestaurantDetails={selectedRestaurantDetails}
+      />
     </>
   );
 };

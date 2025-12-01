@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
-import { Dialog } from "@headlessui/react";
 import { Restaurant, RestaurantDetails, VisitStatsEntry } from "../../../types";
 import { Heart, Globe, Phone, Navigation, MapPin, CheckCircle2, Sparkles } from "lucide-react";
 import { StatusBanner } from "../../components/StatusBanner";
@@ -92,8 +91,6 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
   const [isOffline, setIsOffline] = useState<boolean>(() =>
     typeof navigator !== "undefined" ? !navigator.onLine : false
   );
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [popupBlocked, setPopupBlocked] = useState(false);
   const menuUrl = details?.website ?? null;
 
   const displayAsRestaurant = useMemo(() => {
@@ -119,6 +116,7 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
   const [comparisonResult, setComparisonResult] = useState<ComparisonResult | null>(null);
   const [comparisonLoading, setComparisonLoading] = useState(false);
   const [comparisonError, setComparisonError] = useState<string | null>(null);
+  const [comparisonEvidence, setComparisonEvidence] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setComparisonSelection(display?.id ? [display.id] : []);
@@ -175,17 +173,24 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
     imageUrl: restaurant.imageUrl,
   });
 
+  const formatPrice = (price?: number | null) => {
+    if (!Number.isFinite(price) || !price) return "?";
+    return "$".repeat(Math.min(Math.max(1, Math.round(price)), 4));
+  };
+
+  const formatTypes = (restaurant: Restaurant) =>
+    (restaurant.types ?? [])
+      .filter((type) => type !== "food")
+      .slice(0, 3)
+      .map((type) => type.replace(/_/g, " "))
+      .join(", ");
+
   const buildComparisonPrompt = (restaurants: Restaurant[]): string => {
     return restaurants
       .map((restaurant, index) => {
-        const typeText = (restaurant.types ?? [])
-          .slice(0, 3)
-          .map((type) => type.replace(/_/g, " "))
-          .join(", ");
-        const dietaryText = (restaurant.dietary ?? [])
-          .slice(0, 2)
-          .join(", ");
-        const priceSymbol = restaurant.priceLevel ? "$".repeat(restaurant.priceLevel) : "?";
+        const typeText = formatTypes(restaurant);
+        const dietaryText = (restaurant.dietary ?? []).slice(0, 2).join(", ");
+        const priceSymbol = formatPrice(restaurant.priceLevel);
         return `${index + 1}. ${restaurant.name} — Rating ${restaurant.rating ?? "N/A"} (${restaurant.reviewCount ?? 0} reviews), Price ${priceSymbol}, Tags: ${[
           typeText,
           dietaryText,
@@ -194,6 +199,82 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
           .join(" • ")}`;
       })
       .join("\n");
+  };
+
+  const computeComparisonSignals = (restaurants: Restaurant[]) => {
+    const insights: Record<string, string> = {};
+
+    const valueScores = restaurants.map((restaurant) => {
+      const price = Number.isFinite(restaurant.priceLevel) && restaurant.priceLevel ? restaurant.priceLevel : 2.5;
+      const rating = Number.isFinite(restaurant.rating) ? restaurant.rating : 0;
+      const score = price > 0 ? rating / price : rating;
+      return { restaurant, score, evidence: `Value score ${(score || 0).toFixed(2)} (rating ${rating || "?"}, price ${formatPrice(restaurant.priceLevel)})` };
+    });
+
+    const dietaryScores = restaurants.map((restaurant) => {
+      const count = Array.isArray(restaurant.dietary) ? restaurant.dietary.length : 0;
+      const score = count + (Number.isFinite(restaurant.rating) ? restaurant.rating / 10 : 0);
+      return { restaurant, score, evidence: `${count} dietary tags${Number.isFinite(restaurant.rating) ? `, rating ${restaurant.rating?.toFixed?.(1) ?? restaurant.rating}` : ""}` };
+    });
+
+    const groupScores = restaurants.map((restaurant) => {
+      const types = (restaurant.types ?? []).map((type) => type.toLowerCase());
+      const groupFriendly = types.some((type) => ["bar", "restaurant", "cafe", "meal_takeaway"].includes(type));
+      const rating = Number.isFinite(restaurant.rating) ? restaurant.rating : 0;
+      const score = (groupFriendly ? 1 : 0) + rating;
+      return { restaurant, score, evidence: `${groupFriendly ? "Group-friendly tags" : "Few group tags"}, rating ${rating.toFixed(1)}` };
+    });
+
+    const quickScores = restaurants.map((restaurant) => {
+      const types = (restaurant.types ?? []).map((type) => type.toLowerCase());
+      const quick = types.some((type) => ["meal_takeaway", "meal_delivery", "meal_takeout", "fast_food"].includes(type));
+      const rating = Number.isFinite(restaurant.rating) ? restaurant.rating : 0;
+      const score = (quick ? 1.5 : 0) + rating / 2;
+      return { restaurant, score, evidence: `${quick ? "Has takeout/delivery tags" : "No speed tags"}, rating ${rating.toFixed(1)}` };
+    });
+
+    const popularSignals = restaurants.map((restaurant) => {
+      const revCount = Number.isFinite(restaurant.reviewCount) ? restaurant.reviewCount : 0;
+      const rating = Number.isFinite(restaurant.rating) ? restaurant.rating : 0;
+      return { restaurant, score: revCount + rating, evidence: `${revCount} reviews, rating ${rating.toFixed(1)}` };
+    });
+
+    const pickWinner = (category: string, scores: Array<{ restaurant: Restaurant; score: number; evidence: string }>) => {
+      const sorted = [...scores].sort((a, b) => b.score - a.score);
+      if (!sorted.length) {
+        insights[category] = "Not enough data to choose.";
+        return;
+      }
+      const [top, second] = sorted;
+      const tie = second && Math.abs(top.score - second.score) < 0.05;
+      insights[category] = tie
+        ? `Split decision between ${top.restaurant.name}${second ? ` and ${second.restaurant.name}` : ""} — scores are too close.`
+        : `${top.restaurant.name}: ${top.evidence}`;
+    };
+
+    pickWinner("Best value", valueScores);
+    pickWinner("Most options for dietary needs", dietaryScores);
+    pickWinner("Best for groups", groupScores);
+    pickWinner("Best for quick service", quickScores);
+    pickWinner("Most popular dishes", popularSignals);
+
+    const summary = restaurants
+      .map((restaurant) => {
+        const price = formatPrice(restaurant.priceLevel);
+        return `${restaurant.name}: rating ${restaurant.rating ?? "?"} (${restaurant.reviewCount ?? 0} reviews), price ${price}, tags ${formatTypes(restaurant) || "n/a"}, dietary ${(restaurant.dietary ?? []).join(", ") || "n/a"}`;
+      })
+      .join("\n");
+
+    const hints = [
+      "Precomputed hints (use as evidence, do not invent):",
+      `Best value hint: ${insights["Best value"] ?? "n/a"}`,
+      `Dietary hint: ${insights["Most options for dietary needs"] ?? "n/a"}`,
+      `Groups hint: ${insights["Best for groups"] ?? "n/a"}`,
+      `Quick service hint: ${insights["Best for quick service"] ?? "n/a"}`,
+      `Popular dishes hint: ${insights["Most popular dishes"] ?? "n/a"}`,
+    ].join("\n");
+
+    return { summary, hints, insights };
   };
 
   const handleRunComparison = useCallback(async () => {
@@ -210,15 +291,21 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
     setComparisonLoading(true);
     setComparisonError(null);
     setComparisonResult(null);
+    setComparisonEvidence({});
 
     try {
-      const prompt = `Compare these restaurants across value, dietary breadth, group friendliness, popular dishes, and speed. Base everything on the provided context.\n${buildComparisonPrompt(
-        selected
-      )}`;
+      const signals = computeComparisonSignals(selected);
+      const prompt = [
+        "Compare these restaurants across value, dietary breadth, group friendliness, popular dishes, and speed. Base everything on the provided context.",
+        buildComparisonPrompt(selected),
+        signals.hints,
+        "If data is thin for a category, return Split decision with a brief reason.",
+      ].join("\n");
       const contextPayload = selected.map(toContextPayload);
       const response = await askAssistant(prompt, [], contextPayload, undefined, { useCase: "comparison_tool" });
       if (response.comparison) {
         setComparisonResult(response.comparison);
+        setComparisonEvidence(signals.insights);
       } else {
         setComparisonError("The comparison tool could not find enough info. Try selecting different restaurants.");
       }
@@ -255,13 +342,7 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
   const handleOpenMenu = useCallback(() => {
     if (!menuUrl) return;
     const win = window.open(menuUrl, "_blank", "noopener,noreferrer");
-    if (!win) {
-      setPopupBlocked(true);
-    } else {
-      setPopupBlocked(false);
-      win.focus?.();
-    }
-    setMenuOpen(true);
+    win?.focus?.();
   }, [menuUrl]);
 
   const totalPhotos = photoSources.length;
@@ -567,6 +648,11 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
                     <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">{insight.category}</p>
                     <p className="text-base font-semibold text-gray-900 dark:text-gray-100">{insight.winner}</p>
                     <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">{insight.rationale}</p>
+                    {comparisonEvidence[insight.category] && (
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                        Evidence: {comparisonEvidence[insight.category]}
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -722,56 +808,6 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
         </button>
       </div>
 
-      <Dialog open={menuOpen} onClose={() => setMenuOpen(false)} className="fixed inset-0 z-[70] overflow-y-auto">
-        <div className="flex min-h-screen items-center justify-center px-4 py-8">
-          <div className="fixed inset-0 bg-black/60" aria-hidden="true" />
-          <div className="relative z-10 w-full max-w-4xl rounded-2xl bg-white dark:bg-gray-900 p-6 shadow-xl border border-gray-100 dark:border-gray-700">
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Menu</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">{display.name}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setMenuOpen(false)}
-                className="rounded-full bg-gray-100 dark:bg-gray-800 px-3 py-1 text-sm font-medium text-gray-600 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-gray-500"
-              >
-                Close
-              </button>
-            </div>
-            <div className="mt-4">
-              {menuUrl ? (
-                <div className="space-y-4">
-                  <StatusBanner
-                    variant="info"
-                    message="We opened the menu in a new browser tab so you can view the latest offerings."
-                  />
-                  {popupBlocked && (
-                    <StatusBanner
-                      variant="warning"
-                      message="Your browser blocked the menu popup. Use the button below or allow popups to open it automatically."
-                      onRetry={handleOpenMenu}
-                      actionLabel="Open Menu"
-                    />
-                  )}
-                  <a
-                    href={menuUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-2 rounded-full bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-900 dark:hover:bg-black/80"
-                  >
-                    Open Menu in New Tab
-                  </a>
-                </div>
-              ) : (
-                <p className="text-sm text-gray-600 dark:text-gray-300">
-                  Menu information isn’t available yet. Try calling the restaurant for today’s offerings.
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-      </Dialog>
     </div>
   );
 };
