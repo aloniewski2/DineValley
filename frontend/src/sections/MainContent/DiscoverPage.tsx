@@ -262,21 +262,7 @@ export const DiscoverPage = ({
         onToggleFavorite={onToggleFavorite}
         onCheckIn={onCheckIn}
       />
-      {Boolean(nextPageToken) && pagesLoaded < 4 && (
-        <div className="flex justify-center">
-          <button
-            type="button"
-            onClick={loadMore}
-            disabled={loading}
-            className="mt-4 inline-flex items-center justify-center rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-300"
-          >
-            {loading ? "Loading..." : `Next page (${pagesLoaded}/4)`}
-          </button>
-        </div>
-      )}
-      {!loading && (!nextPageToken || pagesLoaded >= 4) && (
-        <p className="text-center text-gray-500">No more restaurants</p>
-      )}
+      {!loading && (!nextPageToken || pagesLoaded >= 4) && <p className="text-center text-gray-500">No more restaurants</p>}
     </div>
   );
 };
