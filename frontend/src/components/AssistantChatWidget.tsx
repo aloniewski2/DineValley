@@ -267,12 +267,25 @@ const extractRecommendations = (
   const normalizedAnswer = normalize(answer);
   if (!normalizedAnswer) return [];
 
-  const matches = candidates.filter((restaurant) => {
-    if (!restaurant?.name) return false;
-    const normalizedName = normalize(restaurant.name);
-    if (!normalizedName) return false;
-    return normalizedAnswer.includes(normalizedName);
-  });
+  const scores = candidates
+    .map((restaurant) => {
+      if (!restaurant?.name) return null;
+      const normalizedName = normalize(restaurant.name);
+      if (!normalizedName) return null;
+      const tightMatch = normalizedAnswer.includes(normalizedName);
+      const looseKey = normalizedName.replace(/\s+/g, "");
+      const looseMatch = looseKey.length > 4 && normalizedAnswer.replace(/\s+/g, "").includes(looseKey);
+      const tokenOverlap = normalizedName
+        .split(" ")
+        .filter((token) => token.length >= 3 && normalizedAnswer.includes(token)).length;
+      if (!tightMatch && !looseMatch && tokenOverlap === 0) return null;
+      const score = normalizedName.length + (tightMatch ? 5 : 0) + (looseMatch ? 3 : 0) + tokenOverlap * 2;
+      return { restaurant, score };
+    })
+    .filter((entry): entry is { restaurant: RestaurantContextPayload; score: number } => Boolean(entry))
+    .sort((a, b) => b.score - a.score);
+
+  const matches = scores.map((entry) => entry.restaurant);
 
   const unique: RestaurantContextPayload[] = [];
   const seen = new Set<string>();
@@ -287,6 +300,28 @@ const extractRecommendations = (
   return allowMultiple ? unique : unique.slice(0, 1);
 };
 
+const keywordScore = (restaurant: RestaurantContextPayload, keywords: string[]): number => {
+  if (!keywords.length) return 0;
+  const haystack = normalize(
+    [
+      restaurant.name,
+      restaurant.address,
+      ...(restaurant.types ?? []).map((type) => type.replace(/_/g, " ")),
+      ...(restaurant.dietary ?? []),
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+  if (!haystack) return 0;
+  return keywords.reduce((score, keyword) => {
+    const key = keyword.toLowerCase();
+    if (haystack.includes(key)) {
+      return score + key.length;
+    }
+    return score;
+  }, 0);
+};
+
 const formatPriceLevel = (level?: number | null) => {
   if (!Number.isFinite(level)) return null;
   const value = Math.max(1, Math.min(4, Math.round(level as number)));
@@ -296,7 +331,8 @@ const formatPriceLevel = (level?: number | null) => {
 const AssistantStructuredContent: React.FC<{
   structured: StructuredAssistantAnswer;
   fallback: string;
-}> = ({ structured, fallback }) => {
+  onFilterClick?: (filter: string) => void;
+}> = ({ structured, fallback, onFilterClick }) => {
   const { summary, highlights, filters, followUp } = structured;
   const hasStructure = Boolean(summary) || (highlights?.length ?? 0) > 0 || (filters?.length ?? 0) > 0 || Boolean(followUp);
 
@@ -317,12 +353,14 @@ const AssistantStructuredContent: React.FC<{
       {filters && filters.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {filters.map((filter) => (
-            <span
+            <button
+              type="button"
               key={filter}
-              className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-600 dark:bg-indigo-600/30 dark:text-indigo-100"
+              onClick={() => onFilterClick?.(filter)}
+              className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-600 dark:bg-indigo-600/30 dark:text-indigo-100 hover:bg-indigo-100 dark:hover:bg-indigo-600/40"
             >
               {filter}
-            </span>
+            </button>
           ))}
         </div>
       )}
@@ -349,6 +387,7 @@ export const AssistantChatWidget: React.FC<Props> = ({
     createDefaultFilters()
   );
   const [fetchedRestaurants, setFetchedRestaurants] = useState<Restaurant[]>([]);
+  const discoverFiltersKey = "discoverFilters";
 
   const activeRestaurantFromDetails = useMemo(() => {
     if (!activeRestaurantDetails) return null;
@@ -402,6 +441,23 @@ export const AssistantChatWidget: React.FC<Props> = ({
     if (!isOpen || !scrollRef.current) return;
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, isOpen]);
+
+  const applyFilterChip = useCallback(
+    (filter: string) => {
+      const nextFilters = cloneFilterOptions(chatFilters);
+      const lower = filter.toLowerCase();
+      if (!nextFilters.cuisines.map((c) => c.toLowerCase()).includes(lower)) {
+        nextFilters.cuisines = [...nextFilters.cuisines, filter];
+      }
+      setChatFilters(() => nextFilters);
+      try {
+        window.localStorage.setItem(discoverFiltersKey, JSON.stringify(nextFilters));
+      } catch {
+        // ignore storage errors
+      }
+    },
+    [chatFilters, setChatFilters]
+  );
 
   const handleSend = useCallback(
     async (event?: React.FormEvent) => {
@@ -476,7 +532,7 @@ export const AssistantChatWidget: React.FC<Props> = ({
               (followUp && !wantsMultiple(question) ? lastRecommendationId ?? undefined : undefined),
           }
         );
-        const allowMultiple = wantsMultiple(question);
+        const allowMultiple = followUp ? false : wantsMultiple(question);
         let recommendations = extractRecommendations(response.answer, context, allowMultiple);
         if (!recommendations.length && response.structured?.highlights?.length) {
           const combined = response.structured.highlights.join(" ");
@@ -492,16 +548,22 @@ export const AssistantChatWidget: React.FC<Props> = ({
           }
         }
         if (!recommendations.length && useCase === "restaurant_recs" && context.length) {
-          recommendations = [...context]
-            .sort((a, b) => {
-              const ratingA = Number.isFinite(a.rating) ? (a.rating as number) : 0;
-              const ratingB = Number.isFinite(b.rating) ? (b.rating as number) : 0;
-              if (ratingA !== ratingB) return ratingB - ratingA;
-              const reviewsA = Number.isFinite(a.reviewCount) ? (a.reviewCount as number) : 0;
-              const reviewsB = Number.isFinite(b.reviewCount) ? (b.reviewCount as number) : 0;
-              return reviewsB - reviewsA;
-            })
-            .slice(0, allowMultiple ? 3 : 1);
+          const scored = [...context].map((restaurant) => ({
+            restaurant,
+            score: keywordScore(restaurant, parsed.keywords) || 0,
+          }));
+
+          scored.sort((a, b) => {
+            if (b.score !== a.score) return b.score - a.score;
+            const ratingA = Number.isFinite(a.restaurant.rating) ? (a.restaurant.rating as number) : 0;
+            const ratingB = Number.isFinite(b.restaurant.rating) ? (b.restaurant.rating as number) : 0;
+            if (ratingA !== ratingB) return ratingB - ratingA;
+            const reviewsA = Number.isFinite(a.restaurant.reviewCount) ? (a.restaurant.reviewCount as number) : 0;
+            const reviewsB = Number.isFinite(b.restaurant.reviewCount) ? (b.restaurant.reviewCount as number) : 0;
+            return reviewsB - reviewsA;
+          });
+
+          recommendations = scored.map((entry) => entry.restaurant).slice(0, allowMultiple ? 3 : 1);
         }
         if (recommendations.length) {
           setLastRecommendationId(recommendations[0].id);
@@ -579,7 +641,7 @@ export const AssistantChatWidget: React.FC<Props> = ({
                     }`}
                   >
                     {message.role === "assistant" && message.structured ? (
-                      <AssistantStructuredContent structured={message.structured} fallback={message.content} />
+                      <AssistantStructuredContent structured={message.structured} fallback={message.content} onFilterClick={applyFilterChip} />
                     ) : (
                       message.content
                     )}
@@ -593,6 +655,7 @@ export const AssistantChatWidget: React.FC<Props> = ({
                       const price = formatPriceLevel(full?.priceLevel ?? recommendation.priceLevel);
                       const dietary = full?.dietary ?? recommendation.dietary;
                       const favorite = full?.isFavorite ?? recommendation.isFavorite;
+                      const snippet = (recommendation.reviews?.[0]?.text || "").slice(0, 120);
 
                       return (
                         <button
@@ -636,6 +699,11 @@ export const AssistantChatWidget: React.FC<Props> = ({
                                   </span>
                                 ))}
                               </div>
+                            )}
+                            {snippet && (
+                              <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400 truncate">
+                                “{snippet}”
+                              </p>
                             )}
                           </div>
                         </button>

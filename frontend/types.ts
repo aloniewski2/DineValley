@@ -44,6 +44,17 @@ export interface RestaurantDetails {
   };
 }
 
+export interface MenuSectionItem {
+  name: string;
+  price?: string;
+  notes?: string;
+}
+
+export interface MenuSection {
+  name: string;
+  items: MenuSectionItem[];
+}
+
 export interface FilterOptions {
   cuisines: string[];
   priceRanges: string[];

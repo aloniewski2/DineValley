@@ -17,6 +17,13 @@ type Props = {
 };
 
 const FILTERS_STORAGE_KEY = "discoverFilters";
+const TRENDING_CUISINES = ["All", "Pizza", "Burgers", "Sushi", "Tacos", "BBQ", "Steak", "Pasta", "Thai"];
+const isDefaultFilters = (filters: FilterOptions): boolean =>
+  filters.cuisines.length === 0 &&
+  filters.priceRanges.length === 0 &&
+  filters.minRating === DEFAULT_FILTERS.minRating &&
+  filters.openNow === DEFAULT_FILTERS.openNow &&
+  filters.distanceMiles === DEFAULT_FILTERS.distanceMiles;
 
 export const DiscoverPage = ({
   onSelectRestaurant,
@@ -170,6 +177,38 @@ export const DiscoverPage = ({
     onSelectRestaurant(randomRestaurant);
   }, [restaurants, onSelectRestaurant]);
 
+  const handleTrendingSelect = (cuisine: string) => {
+    if (cuisine === "All") {
+      const reset = createDefaultFilters();
+      applyFilters(reset);
+      setSearch("");
+      setPagesLoaded(1);
+      setRefreshToken((prev) => prev + 1);
+      return;
+    }
+
+    const next: FilterOptions = {
+      ...filters,
+      cuisines: [cuisine],
+      priceRanges: [],
+      minRating: filters.minRating,
+      openNow: filters.openNow,
+      distanceMiles: filters.distanceMiles,
+    };
+    applyFilters(next);
+    setSearch(cuisine);
+    setPagesLoaded(1);
+    setRefreshToken((prev) => prev + 1);
+  };
+
+  useEffect(() => {
+    if (search.trim() === "" && !isDefaultFilters(filters)) {
+      setFiltersState(createDefaultFilters());
+      setPagesLoaded(1);
+      setRefreshToken((prev) => prev + 1);
+    }
+  }, [search, filters]);
+
   return (
     <div className="p-6 space-y-6">
       {isOffline && (
@@ -201,6 +240,18 @@ export const DiscoverPage = ({
         theme={theme}
         onToggleTheme={onToggleTheme}
       />
+      <div className="mb-4 flex flex-wrap gap-2">
+        {TRENDING_CUISINES.map((cuisine) => (
+          <button
+            key={cuisine}
+            type="button"
+            onClick={() => handleTrendingSelect(cuisine)}
+            className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500/40 dark:bg-indigo-600/20 dark:text-indigo-100 dark:hover:bg-indigo-600/30"
+          >
+            {cuisine}
+          </button>
+        ))}
+      </div>
       <TrendingSection
         restaurants={restaurants}
         onLoadMore={loadMore}

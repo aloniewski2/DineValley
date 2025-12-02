@@ -124,6 +124,7 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
     setComparisonError(null);
   }, [display?.id]);
 
+
   const comparisonCandidates = useMemo(() => {
     if (!comparisonPool?.length) return [] as Restaurant[];
     const map = new Map<string, Restaurant>();
@@ -208,13 +209,22 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
       const price = Number.isFinite(restaurant.priceLevel) && restaurant.priceLevel ? restaurant.priceLevel : 2.5;
       const rating = Number.isFinite(restaurant.rating) ? restaurant.rating : 0;
       const score = price > 0 ? rating / price : rating;
-      return { restaurant, score, evidence: `Value score ${(score || 0).toFixed(2)} (rating ${rating || "?"}, price ${formatPrice(restaurant.priceLevel)})` };
+      const types = formatTypes(restaurant);
+      return {
+        restaurant,
+        score,
+        evidence: `Rating ${rating || "?"}, price ${formatPrice(restaurant.priceLevel)}${types ? `, tags: ${types}` : ""}`,
+      };
     });
 
     const dietaryScores = restaurants.map((restaurant) => {
       const count = Array.isArray(restaurant.dietary) ? restaurant.dietary.length : 0;
       const score = count + (Number.isFinite(restaurant.rating) ? restaurant.rating / 10 : 0);
-      return { restaurant, score, evidence: `${count} dietary tags${Number.isFinite(restaurant.rating) ? `, rating ${restaurant.rating?.toFixed?.(1) ?? restaurant.rating}` : ""}` };
+      return {
+        restaurant,
+        score,
+        evidence: `${count} dietary tags${Number.isFinite(restaurant.rating) ? `, rating ${restaurant.rating?.toFixed?.(1) ?? restaurant.rating}` : ""}`,
+      };
     });
 
     const groupScores = restaurants.map((restaurant) => {
@@ -222,7 +232,11 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
       const groupFriendly = types.some((type) => ["bar", "restaurant", "cafe", "meal_takeaway"].includes(type));
       const rating = Number.isFinite(restaurant.rating) ? restaurant.rating : 0;
       const score = (groupFriendly ? 1 : 0) + rating;
-      return { restaurant, score, evidence: `${groupFriendly ? "Group-friendly tags" : "Few group tags"}, rating ${rating.toFixed(1)}` };
+      return {
+        restaurant,
+        score,
+        evidence: `${groupFriendly ? "Group-friendly tags" : "Few group tags"}, rating ${rating.toFixed(1)}`,
+      };
     });
 
     const quickScores = restaurants.map((restaurant) => {
@@ -230,7 +244,11 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
       const quick = types.some((type) => ["meal_takeaway", "meal_delivery", "meal_takeout", "fast_food"].includes(type));
       const rating = Number.isFinite(restaurant.rating) ? restaurant.rating : 0;
       const score = (quick ? 1.5 : 0) + rating / 2;
-      return { restaurant, score, evidence: `${quick ? "Has takeout/delivery tags" : "No speed tags"}, rating ${rating.toFixed(1)}` };
+      return {
+        restaurant,
+        score,
+        evidence: `${quick ? "Has takeout/delivery tags" : "No speed tags"}, rating ${rating.toFixed(1)}`,
+      };
     });
 
     const popularSignals = restaurants.map((restaurant) => {
@@ -650,7 +668,7 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
                     <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">{insight.rationale}</p>
                     {comparisonEvidence[insight.category] && (
                       <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
-                        Evidence: {comparisonEvidence[insight.category]}
+                        Why this wins: {comparisonEvidence[insight.category]}
                       </p>
                     )}
                   </div>

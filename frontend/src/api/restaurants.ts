@@ -71,3 +71,13 @@ export async function fetchRestaurantDetails(id: string): Promise<RestaurantDeta
     reviewSummary: data.reviewSummary ?? undefined,
   };
 }
+
+export interface MenuVisionSection {
+  name: string;
+  items: { name: string; price?: string; notes?: string }[];
+}
+
+export interface MenuVisionResult {
+  sections: MenuVisionSection[];
+  raw?: string;
+}
