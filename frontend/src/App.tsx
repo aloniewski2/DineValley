@@ -433,6 +433,7 @@ export const App = () => {
             onToggleFavorite={handleToggleFavorite}
             favorites={favoriteIds}
             onCheckIn={handleCheckIn}
+            visitStats={visitStats}
             theme={theme}
             onToggleTheme={toggleTheme}
           />

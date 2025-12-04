@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { Restaurant, FilterOptions, DEFAULT_FILTERS, createDefaultFilters } from "../../../types";
+import { Restaurant, FilterOptions, DEFAULT_FILTERS, createDefaultFilters, VisitStatsMap } from "../../../types";
 import { RestaurantCard } from "../../components/RestaurantCard";
 import { SearchSection } from "../SearchSection/SearchSection";
 import { TrendingSection } from "../TrendingSection/TrendingSection";
@@ -12,6 +12,7 @@ type Props = {
   onToggleFavorite: (id: string) => void;
   favorites: string[];
   onCheckIn: (restaurant: Restaurant) => void;
+  visitStats: VisitStatsMap;
   theme: "light" | "dark";
   onToggleTheme: () => void;
 };
@@ -30,6 +31,7 @@ export const DiscoverPage = ({
   onToggleFavorite,
   favorites,
   onCheckIn,
+  visitStats,
   theme,
   onToggleTheme,
 }: Props) => {
@@ -261,6 +263,7 @@ export const DiscoverPage = ({
         onSelectRestaurant={onSelectRestaurant}
         onToggleFavorite={onToggleFavorite}
         onCheckIn={onCheckIn}
+        visitStats={visitStats}
       />
       {!loading && (!nextPageToken || pagesLoaded >= 4) && <p className="text-center text-gray-500">No more restaurants</p>}
     </div>
