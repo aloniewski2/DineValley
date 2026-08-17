@@ -68,5 +68,12 @@ export const buildRestaurantQueryParams = (filters: FilterOptions, search: strin
 
 export const filterRestaurantsClientSide = (restaurants: Restaurant[], filters: FilterOptions) => {
   const minRating = filters.minRating;
+  if (!minRating) return restaurants;
+
+  // The OpenStreetMap dataset has no ratings. Applying a minimum would hide
+  // every result, so the filter only bites once ratings actually exist.
+  const anyRated = restaurants.some((restaurant) => (restaurant.rating ?? 0) > 0);
+  if (!anyRated) return restaurants;
+
   return restaurants.filter((restaurant) => (restaurant.rating ?? 0) >= minRating);
 };
