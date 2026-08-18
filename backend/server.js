@@ -7,6 +7,7 @@ import {
   toCard, toDetails, placeholderSvg,
 } from "./places.js";
 import { areaFor, centerForZip, loadZips, findCached } from "./areas.js";
+import { imageForPlace, loadImageCache, imageCacheStats } from "./preview.js";
 
 dotenv.config();
 
@@ -202,12 +203,27 @@ app.get("/restaurant/:id", async (req, res) => {
 // ✅ Generated cover art — OSM carries no photos, and the old Unsplash
 // fallback was retired (it returns 503), so every card gets a deterministic
 // SVG keyed to its cuisine instead of a broken image.
-app.get("/place-photo/:id", (req, res) => {
+app.get("/place-photo/:id", async (req, res) => {
   const id = decodeURIComponent(req.params.id);
   const place = findPlace(id) || findCached(id);
   if (!place) return res.status(404).json({ error: "Unknown place" });
+
+  // If the restaurant's own site advertises an og:image, send the browser
+  // there. Resolution is capped so a slow site can't hold up the response —
+  // it finishes in the background and the next request gets the answer.
+  if (place.website) {
+    const image = await imageForPlace(place, { timeoutMs: 2500 }).catch(() => null);
+    if (image?.url) {
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      res.setHeader("X-Image-Kind", image.kind);   // photo | logo, for debugging
+      return res.redirect(302, image.url);
+    }
+  }
+
   res.setHeader("Content-Type", "image/svg+xml; charset=utf-8");
-  res.setHeader("Cache-Control", "public, max-age=604800, immutable");
+  // Shorter than the old week: a place whose image resolves later should
+  // stop showing the placeholder reasonably soon.
+  res.setHeader("Cache-Control", "public, max-age=3600");
   res.send(placeholderSvg(place));
 });
 
@@ -516,8 +532,10 @@ const baseSystemPrompt = [
 
 await loadPlaces();
 await loadZips();
+await loadImageCache();
 const { count, generatedAt, attribution } = meta();
 console.log(`[Places] ${count} places loaded (built ${generatedAt}) — ${attribution}`);
+console.log(`[Images] ${imageCacheStats().withImage} cover images cached`);
 
 app.listen(PORT, "0.0.0.0", () =>
   console.log(`🚀 Backend running on http://localhost:${PORT}`)
