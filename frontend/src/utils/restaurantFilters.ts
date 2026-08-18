@@ -57,12 +57,17 @@ export const buildRestaurantQueryParams = (filters: FilterOptions, search: strin
 
   const radiusMeters = Math.round(Math.max(1, filters.distanceMiles) * 1609.34);
 
+  // Defensive: this project has no typechecker in its build, so a filters
+  // object built somewhere without `zip` shouldn't throw here.
+  const zip = (filters.zip ?? "").trim();
+
   return {
     keyword,
     minPrice,
     maxPrice,
     openNow: filters.openNow,
     radiusMeters,
+    ...(/^\d{5}$/.test(zip) ? { zip } : {}),
   };
 };
 

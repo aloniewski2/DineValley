@@ -27,6 +27,7 @@ export const meta = () => ({
   generatedAt: dataset.generatedAt,
   attribution: dataset.attribution,
   center: dataset.center,
+  dataset,                    // areaFor needs the baked footprint to decide
 });
 
 const searchText = (p) =>
@@ -104,17 +105,22 @@ export function weekdayText(place) {
 export const photoUrl = (baseUrl, place) =>
   `${baseUrl}/place-photo/${encodeURIComponent(place.id)}`;
 
-export function searchPlaces({ keyword, minPrice, maxPrice, openNow, radius, pageToken } = {}) {
-  const center = dataset.center;
+export function searchPlaces({ keyword, minPrice, maxPrice, openNow, radius, pageToken, area } = {}) {
+  // `area` is supplied when the visitor searched outside the baked region.
+  const source = area?.places?.length ? area.places : dataset.places;
+  const center = area?.center ?? dataset.center;
   const maxRadius = Number.isFinite(Number(radius)) ? Number(radius) : 20000;
   const terms = String(keyword || "").toLowerCase().split(/\s+/).filter(Boolean);
   const min = Number.isFinite(Number(minPrice)) ? Number(minPrice) : null;
   const max = Number.isFinite(Number(maxPrice)) ? Number(maxPrice) : null;
   const wantOpen = openNow === true || openNow === "true";
 
-  let matches = dataset.places.filter((p) => {
+  let matches = source.filter((p) => {
     if (distanceMeters(center, p) > maxRadius) return false;
-    if (terms.length && !terms.every((t) => p._search.includes(t))) return false;
+    if (terms.length) {
+      p._search ??= searchText(p);
+      if (!terms.every((t) => p._search.includes(t))) return false;
+    }
     if (min !== null || max !== null) {
       if (p.priceLevel === null) return false;          // unknown price, like Google
       if (min !== null && p.priceLevel < min) return false;

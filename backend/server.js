@@ -6,6 +6,7 @@ import {
   loadPlaces, meta, searchPlaces, findPlace,
   toCard, toDetails, placeholderSvg,
 } from "./places.js";
+import { areaFor, centerForZip, loadZips, findCached } from "./areas.js";
 
 dotenv.config();
 
@@ -128,11 +129,44 @@ app.get("/api/hello", (_, res) => res.json({ ok: true, message: "DineValley API 
 // ✅ Nearby Restaurants — served from the local OpenStreetMap index
 app.get("/restaurants", async (req, res) => {
   try {
-    const { keyword, minPrice, maxPrice, openNow, pageToken, radius } = req.query;
+    const { keyword, minPrice, maxPrice, openNow, pageToken, radius, zip, lat, lng } = req.query;
     const baseUrl = `${req.protocol}://${req.get("host")}`;
+    const radiusMeters = Number.isFinite(Number(radius)) ? Number(radius) : 20000;
+
+    // Where to search: an explicit ZIP, explicit coordinates, or home.
+    let center = null;
+    if (zip) {
+      center = centerForZip(zip);
+      if (!center) {
+        // Some real ZIPs (PO-box and IRS-only ones) have no Census ZCTA and so
+        // no centroid — say that rather than calling them invalid.
+        return res.status(400).json({
+          error: /^\d{5}$/.test(String(zip))
+            ? `We don't have a location for ZIP ${zip}. Try a nearby one.`
+            : `"${String(zip).slice(0, 12)}" isn't a five-digit ZIP code.`,
+        });
+      }
+    } else if (Number.isFinite(Number(lat)) && Number.isFinite(Number(lng))) {
+      center = { lat: Number(lat), lng: Number(lng) };
+    }
+
+    let area = null;
+    if (center) {
+      try {
+        area = await areaFor({ ...center, radius: radiusMeters }, meta().dataset);
+      } catch (err) {
+        if (err.code === "AREA_UNAVAILABLE") {
+          // Better an honest "try again" than a confident empty list.
+          return res.status(503).json({
+            error: "Couldn't load restaurants for that area just now — OpenStreetMap is busy. Try again in a moment.",
+          });
+        }
+        throw err;
+      }
+    }
 
     const { matches, total, nextPageToken } = searchPlaces({
-      keyword, minPrice, maxPrice, openNow, radius, pageToken,
+      keyword, minPrice, maxPrice, openNow, radius, pageToken, area,
     });
 
     res.json({
@@ -140,6 +174,11 @@ app.get("/restaurants", async (req, res) => {
       nextPageToken,
       total,
       attribution: meta().attribution,
+      area: {
+        zip: center?.zip ?? null,
+        center: area?.center ?? meta().center,
+        source: area?.source ?? "local",
+      },
     });
   } catch (error) {
     console.error("❌ Search failed:", error.message);
@@ -150,7 +189,8 @@ app.get("/restaurants", async (req, res) => {
 // ✅ Restaurant Details
 app.get("/restaurant/:id", async (req, res) => {
   try {
-    const place = findPlace(req.params.id);
+    // Could be from the baked region or from an area fetched for a ZIP search.
+    const place = findPlace(req.params.id) || findCached(req.params.id);
     if (!place) return res.status(404).json({ error: "Restaurant not found" });
     res.json(toDetails(place, `${req.protocol}://${req.get("host")}`));
   } catch (error) {
@@ -163,7 +203,8 @@ app.get("/restaurant/:id", async (req, res) => {
 // fallback was retired (it returns 503), so every card gets a deterministic
 // SVG keyed to its cuisine instead of a broken image.
 app.get("/place-photo/:id", (req, res) => {
-  const place = findPlace(decodeURIComponent(req.params.id));
+  const id = decodeURIComponent(req.params.id);
+  const place = findPlace(id) || findCached(id);
   if (!place) return res.status(404).json({ error: "Unknown place" });
   res.setHeader("Content-Type", "image/svg+xml; charset=utf-8");
   res.setHeader("Cache-Control", "public, max-age=604800, immutable");
@@ -474,6 +515,7 @@ const baseSystemPrompt = [
 });
 
 await loadPlaces();
+await loadZips();
 const { count, generatedAt, attribution } = meta();
 console.log(`[Places] ${count} places loaded (built ${generatedAt}) — ${attribution}`);
 

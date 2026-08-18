@@ -11,6 +11,7 @@ export interface BackendFilters {
   openNow?: boolean;
   pageToken?: string;
   radiusMeters?: number;
+  zip?: string;
 }
 
 export interface RestaurantsResponse {
@@ -27,6 +28,7 @@ export async function fetchRestaurants(filters: BackendFilters): Promise<Restaur
   if (filters.openNow) params.append("openNow", "true");
   if (filters.pageToken) params.append("pageToken", filters.pageToken);
   if (filters.radiusMeters !== undefined) params.append("radius", filters.radiusMeters.toString());
+  if (filters.zip) params.append("zip", filters.zip);
 
   const response = await fetch(`${API_BASE}/restaurants?${params.toString()}`);
   if (!response.ok) throw new Error("Failed to fetch restaurants");
