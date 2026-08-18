@@ -50,11 +50,38 @@ DineValley/
 └── README.md
 ```
 
+## Restaurant data
+
+Restaurant data comes from **OpenStreetMap**, queried through the free
+[Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) and baked into
+`backend/data/places.json` at build time. There is no API key, no quota and no
+per-request cost, and the server answers searches from memory.
+
+```bash
+cd backend
+npm run data:build          # ~1,000 places, 20km around Allentown
+npm run data:build -- 40.6084 -75.4902 30000   # or a custom centre/radius
+```
+
+Re-run it whenever you want fresher data; OSM coverage in the Lehigh Valley is
+actively maintained. Data is © OpenStreetMap contributors, licensed ODbL —
+keep the attribution string that ships in every API response visible in the UI.
+
+**What OSM provides:** name, address, coordinates, cuisine, opening hours
+(parsed into real weekday ranges, which powers the *open now* filter), phone,
+website, dietary tags, takeaway/delivery.
+
+**What it doesn't:** star ratings, review text and photos. Cards therefore show
+`rating: 0` and an empty `reviews` array, and each place gets a generated SVG
+cover keyed to its cuisine instead of a photo.
+
 ## Technology Stack
 - React (frontend framework)
 - TypeScript (type-safe JavaScript)
 - Tailwind CSS (styling)
 - Vite (build tool)
+- Express + OpenStreetMap/Overpass (backend and data)
+- Groq (AI assistant)
 - GitHub Actions (CI/CD)
 
 ## Contributing

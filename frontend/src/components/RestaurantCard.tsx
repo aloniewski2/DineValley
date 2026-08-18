@@ -31,7 +31,7 @@ export const RestaurantCard = ({
   lastVisited,
   onCheckIn,
 }: RestaurantCardProps) => {
-  const { imageUrl, name, rating, reviewCount, address, priceLevel, types, isFavorite, businessStatus } =
+  const { imageUrl, name, rating, reviewCount, address, priceLevel, types, isFavorite, businessStatus, openNow, dietary } =
     restaurant;
   const resolvedImageUrl = imageUrl || "https://source.unsplash.com/400x300/?restaurant,food";
   const formattedVisitDate = formatLastVisit(lastVisited);
@@ -99,11 +99,29 @@ export const RestaurantCard = ({
 
         <p className="mb-2 text-sm text-gray-500 dark:text-gray-400">{address}</p>
 
-        <div className="flex items-center gap-1">
-          <span className="text-sm text-yellow-500">★</span>
-          <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{rating}</span>
-          <span className="text-sm text-gray-500 dark:text-gray-400">({reviewCount} reviews)</span>
-        </div>
+        {/* OpenStreetMap carries no ratings, so show what it does know
+            rather than a hollow "0 (0 reviews)". */}
+        {rating > 0 ? (
+          <div className="flex items-center gap-1">
+            <span className="text-sm text-yellow-500">★</span>
+            <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{rating}</span>
+            <span className="text-sm text-gray-500 dark:text-gray-400">({reviewCount} reviews)</span>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            {openNow === true && (
+              <span className="font-medium text-emerald-600 dark:text-emerald-400">Open now</span>
+            )}
+            {openNow === false && (
+              <span className="font-medium text-gray-500 dark:text-gray-400">Closed</span>
+            )}
+            {dietary?.slice(0, 2).map((diet) => (
+              <span key={diet} className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+                {diet.replace(/_/g, " ")}
+              </span>
+            ))}
+          </div>
+        )}
 
         {(onCheckIn || visited) && (
           <div className="mt-3 flex flex-wrap items-center gap-2">

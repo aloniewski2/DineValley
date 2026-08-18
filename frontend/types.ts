@@ -10,6 +10,7 @@ export interface Restaurant {
   types: string[];
   isFavorite?: boolean;
   dietary?: string[];
+  openNow?: boolean | null;
   hasVisited?: boolean;
   visitCount?: number;
   lastVisited?: string | null;
