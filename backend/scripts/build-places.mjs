@@ -84,17 +84,19 @@ function addressOf(tags) {
 
 // Chains have predictable price points; everything else is left null rather
 // than invented, and the UI hides the field when it's null.
+// Objects rather than [regex, level] tuples: in a mixed tuple array the level
+// infers as RegExp|number, which makes priceOf() look polymorphic to analysers.
 const CHAIN_PRICE = [
-  [/mcdonald|burger king|wendy|taco bell|subway|dunkin|kfc|popeyes|arby|sonic|dairy queen|domino|little caesars/i, 1],
-  [/chipotle|panera|five guys|chick-fil-a|shake shack|starbucks|jersey mike|wawa|sheetz/i, 2],
-  [/applebee|olive garden|chili's|red robin|texas roadhouse|outback|cheesecake/i, 2],
+  { re: /mcdonald|burger king|wendy|taco bell|subway|dunkin|kfc|popeyes|arby|sonic|dairy queen|domino|little caesars/i, level: 1 },
+  { re: /chipotle|panera|five guys|chick-fil-a|shake shack|starbucks|jersey mike|wawa|sheetz/i, level: 2 },
+  { re: /applebee|olive garden|chili's|red robin|texas roadhouse|outback|cheesecake/i, level: 2 },
 ];
 
 // Always returns a number; 0 means "no idea". The caller maps that back to
 // null so data/places.json keeps its `priceLevel: number | null` shape.
 function priceOf(tags) {
   const name = tags.name || "";
-  for (const [re, level] of CHAIN_PRICE) if (re.test(name)) return level;
+  for (const { re, level } of CHAIN_PRICE) if (re.test(name)) return level;
   if (tags.amenity === "fast_food") return 1;
   return 0;
 }
