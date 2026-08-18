@@ -33,3 +33,6 @@ frontend/.env
 *.tsbuildinfo
 backend/package-lock.json
 frontend/package-lock.json
+
+# runtime area cache — rebuilt on demand
+backend/data/cache/

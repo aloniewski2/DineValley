@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { SearchBar } from "./components/SearchBar";
+import { ZipInput } from "./components/ZipInput";
 import { FilterButton } from "./components/FilterButton";
 import { SurpriseMeButton } from "./components/SurpriseMeButton";
 import { ThemeToggleButton } from "./components/ThemeToggleButton";
@@ -36,6 +37,7 @@ export const SearchSection: React.FC<SearchSectionProps> = ({
           <SearchBar value={value} onChange={onChange} />
         </div>
         <div className="flex flex-wrap items-center gap-2 justify-end">
+          <ZipInput value={filters.zip ?? ""} onChange={(zip) => setFilters({ ...filters, zip })} />
           <FilterButton onClick={() => setFilterOpen(true)} />
           <SurpriseMeButton onClick={onSurprise} disabled={surpriseDisabled} />
           <ThemeToggleButton theme={theme} onToggle={onToggleTheme} />

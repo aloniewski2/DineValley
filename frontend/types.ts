@@ -57,6 +57,8 @@ export interface MenuSection {
 }
 
 export interface FilterOptions {
+  /** US ZIP code to search around; empty means the app's home region. */
+  zip: string;
   cuisines: string[];
   priceRanges: string[];
   minRating: number;
@@ -91,6 +93,7 @@ export interface VisitStatsEntry {
 export type VisitStatsMap = Record<string, VisitStatsEntry>;
 
 export const DEFAULT_FILTERS: FilterOptions = {
+  zip: "",
   cuisines: [],
   priceRanges: [],
   minRating: 0,
