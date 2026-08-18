@@ -12,6 +12,18 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const [latArg, lngArg, radiusArg] = process.argv.slice(2);
+
+// Arguments are positional, so a stray flag like --help used to land in latArg,
+// become NaN, and quietly produce an empty dataset that looked like a
+// successful build. Refuse to run rather than write nonsense.
+for (const [name, value] of [["latitude", latArg], ["longitude", lngArg], ["radius", radiusArg]]) {
+  if (value !== undefined && !Number.isFinite(Number(value))) {
+    console.error(`Bad ${name}: ${JSON.stringify(value)}\n` +
+      `Usage: node scripts/build-places.mjs [lat] [lng] [radiusMeters]`);
+    process.exit(1);
+  }
+}
+
 const LAT = Number(latArg ?? 40.6084);
 const LNG = Number(lngArg ?? -75.4902);
 const RADIUS = Number(radiusArg ?? 20000);
@@ -145,6 +157,14 @@ for (const el of elements) {
 places.sort((a, b) => a.name.localeCompare(b.name));
 
 await mkdir(dirname(OUT), { recursive: true });
+if (places.length === 0) {
+  console.error(
+    "Overpass returned no places. Refusing to overwrite data/places.json —\n" +
+    "the previous dataset is still in place. Check the coordinates and retry."
+  );
+  process.exit(1);
+}
+
 await writeFile(
   OUT,
   JSON.stringify(
