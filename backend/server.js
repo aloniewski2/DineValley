@@ -448,7 +448,9 @@ const baseSystemPrompt = [
     });
 
     if (!answer) {
-      console.error("❌ Groq chat error: Missing completion", response?.data);
+      // Don't log the body: it echoes the visitor's question straight back,
+      // which puts user-controlled text into the log stream.
+      console.error("❌ Groq chat error: response contained no completion");
       return res.status(502).json({ error: "Groq did not return a completion" });
     }
 

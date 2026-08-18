@@ -90,11 +90,13 @@ const CHAIN_PRICE = [
   [/applebee|olive garden|chili's|red robin|texas roadhouse|outback|cheesecake/i, 2],
 ];
 
+// Always returns a number; 0 means "no idea". The caller maps that back to
+// null so data/places.json keeps its `priceLevel: number | null` shape.
 function priceOf(tags) {
   const name = tags.name || "";
   for (const [re, level] of CHAIN_PRICE) if (re.test(name)) return level;
   if (tags.amenity === "fast_food") return 1;
-  return null;
+  return 0;
 }
 
 const elements = await (async () => {
@@ -128,7 +130,7 @@ for (const el of elements) {
     types: typesOf(tags),
     cuisine: (tags.cuisine || "").split(";").filter(Boolean),
     dietary: dietOf(tags),
-    priceLevel: priceOf(tags),
+    priceLevel: priceOf(tags) || null,
     phone: tags.phone || tags["contact:phone"] || null,
     website: tags.website || tags["contact:website"] || null,
     openingHours: tags.opening_hours || null,
@@ -158,7 +160,7 @@ await writeFile(
   "utf8"
 );
 
-const has = (f) => places.filter(f).length;
+const has = (f) => places.filter((place) => f(place)).length;
 console.log(`\nWrote ${places.length} places to data/places.json`);
 console.log(`  cuisine       ${has((p) => p.cuisine.length)}`);
 console.log(`  address       ${has((p) => p.address)}`);

@@ -88,11 +88,10 @@ export function weekdayText(place) {
     } catch { /* fall through to Closed */ }
 
     const label = DAYS[from.getDay()];
-    out.push(
-      intervals.length
-        ? `${label}: ${intervals.map(([a, b]) => `${hhmm(a)} – ${hhmm(b >= to ? new Date(b - 1) : b)}`).join(", ")}`
-        : `${label}: Closed`
-    );
+    const spans = intervals
+      .map(([a, b]) => hhmm(a) + " – " + hhmm(b >= to ? new Date(b - 1) : b))
+      .join(", ");
+    out.push(intervals.length ? `${label}: ${spans}` : `${label}: Closed`);
   }
   return out;
 }
@@ -187,9 +186,9 @@ const PALETTE = [
 ];
 
 export function placeholderSvg(place) {
-  const seed = [...place.id].reduce((a, c) => a + c.charCodeAt(0), 0);
+  const seed = [...place.id].reduce((a, c) => a + c.codePointAt(0), 0);
   const [from, to] = PALETTE[seed % PALETTE.length];
-  const label = (place.cuisine[0] || place.types[0] || "food").replace(/_/g, " ");
+  const label = (place.cuisine[0] || place.types[0] || "food").replaceAll("_", " ");
   const initial = place.name.trim()[0]?.toUpperCase() || "?";
   const esc = (s) => String(s).replace(/[<>&"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c]));
 
