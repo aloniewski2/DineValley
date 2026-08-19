@@ -18,6 +18,11 @@ const TTL_MS = 7 * 24 * 60 * 60 * 1000;      // OSM moves slowly; a week is fine
 // foodless 20km circle, so it expires quickly and gets retried.
 const EMPTY_TTL_MS = 30 * 60 * 1000;
 const MAX_MEMORY_AREAS = 40;
+// A 20km circle over Manhattan is ~18,000 places. Holding them all costs more
+// memory than a small host has, and the request that fetched them took the
+// whole process down. The UI only ever pages 20 at a time, so keep the closest
+// slice to the search centre and discard the rest.
+const MAX_PLACES_PER_AREA = 1500;
 const DEFAULT_RADIUS = 20000;
 
 let zips = null;
@@ -89,6 +94,13 @@ function remember(key, payload) {
  * Places around a point. `baked` is the deploy-time dataset; when the request
  * lands inside it we use it rather than querying anything.
  */
+/** Keep the nearest MAX_PLACES_PER_AREA results; dense cities blow past it. */
+function trimToRadius(places, lat, lng) {
+  if (places.length <= MAX_PLACES_PER_AREA) return places;
+  const d2 = (p) => (p.lat - lat) ** 2 + (p.lng - lng) ** 2;
+  return places.sort((a, b) => d2(a) - d2(b)).slice(0, MAX_PLACES_PER_AREA);
+}
+
 export async function areaFor({ lat, lng, radius = DEFAULT_RADIUS }, baked) {
   const center = { lat, lng };
 
@@ -117,7 +129,7 @@ export async function areaFor({ lat, lng, radius = DEFAULT_RADIUS }, baked) {
     }
     let places;
     try {
-      places = normalise(await fetchElements(lat, lng, radius));
+      places = trimToRadius(normalise(await fetchElements(lat, lng, radius)), lat, lng);
     } catch (err) {
       // Don't poison the cache with a failure — let the caller say so.
       const e = new Error(`OpenStreetMap didn't answer for this area (${err.message})`);
