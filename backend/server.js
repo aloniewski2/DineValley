@@ -311,7 +311,41 @@ app.get("/chat", (_, res) => {
   });
 });
 
+/* The /chat route spends a Groq key that belongs to whoever deployed this.
+   Without a ceiling, one script can drain a month of quota in minutes, so
+   every caller gets a small budget per window. In-memory: it resets on a cold
+   start and isn't shared across instances, which is the right trade for a
+   portfolio deployment — put a real limiter in front if this ever matters. */
+const CHAT_RATE = { windowMs: 60_000, max: 8, dayMax: 200 };
+const chatHits = new Map();
+let chatDayCount = 0;
+let chatDayStart = Date.now();
+
+function chatLimited(ip) {
+  const now = Date.now();
+  if (now - chatDayStart > 86_400_000) { chatDayCount = 0; chatDayStart = now; }
+  // A global daily ceiling as well as a per-IP one, so a botnet spreading
+  // across addresses still can't run the bill up.
+  if (++chatDayCount > CHAT_RATE.dayMax) return "daily";
+
+  const recent = (chatHits.get(ip) || []).filter((t) => now - t < CHAT_RATE.windowMs);
+  recent.push(now);
+  chatHits.set(ip, recent);
+  if (chatHits.size > 5000) chatHits.clear();
+  return recent.length > CHAT_RATE.max ? "burst" : null;
+}
+
 app.post("/chat", async (req, res) => {
+  const ip = req.headers["x-real-ip"] || String(req.headers["x-forwarded-for"] || "").split(",").pop()?.trim() || req.socket?.remoteAddress || "unknown";
+  const limited = chatLimited(ip);
+  if (limited) {
+    return res.status(429).json({
+      error: limited === "daily"
+        ? "The assistant has hit its daily limit on this demo. Try again tomorrow."
+        : `Too many questions at once — ${CHAT_RATE.max} a minute, please.`,
+    });
+  }
+
   if (!GROQ_API_KEY) {
     return res.status(503).json({ error: "GROQ_API_KEY is not configured on the server" });
   }
