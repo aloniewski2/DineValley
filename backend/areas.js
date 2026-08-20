@@ -129,6 +129,9 @@ export async function areaFor({ lat, lng, radius = DEFAULT_RADIUS }, baked) {
     }
     let places;
     try {
+      // One request, capped at the source. Asking twice — tight radius then
+      // wide — reads better but gets the second query rate-limited by every
+      // Overpass mirror, which broke rural searches entirely.
       places = trimToRadius(normalise(await fetchElements(lat, lng, radius)), lat, lng);
     } catch (err) {
       // Don't poison the cache with a failure — let the caller say so.

@@ -13,17 +13,22 @@ const ENDPOINTS = [
 
 const AMENITIES = "restaurant|cafe|fast_food|bar|pub|ice_cream";
 
-export function overpassQuery(lat, lng, radius) {
+// `out` takes a cap. Without it a dense city returns tens of thousands of
+// elements, and simply receiving and parsing that is what exhausts memory —
+// trimming afterwards is far too late.
+export const ELEMENT_CAP = 2500;
+
+export function overpassQuery(lat, lng, radius, cap = ELEMENT_CAP) {
   return `
 [out:json][timeout:60];
 (
   node["amenity"~"^(${AMENITIES})$"](around:${radius},${lat},${lng});
   way ["amenity"~"^(${AMENITIES})$"](around:${radius},${lat},${lng});
 );
-out center tags;`;
+out center tags ${cap};`;
 }
 
-export async function fetchElements(lat, lng, radius, { log = () => {} } = {}) {
+export async function fetchElements(lat, lng, radius, { log = () => {}, cap = ELEMENT_CAP } = {}) {
   let lastError;
   for (const url of ENDPOINTS) {
     try {
@@ -34,7 +39,7 @@ export async function fetchElements(lat, lng, radius, { log = () => {} } = {}) {
           "content-type": "application/x-www-form-urlencoded",
           "user-agent": "dinevalley/1.0 (portfolio project)",
         },
-        body: new URLSearchParams({ data: overpassQuery(lat, lng, radius) }),
+        body: new URLSearchParams({ data: overpassQuery(lat, lng, radius, cap) }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
