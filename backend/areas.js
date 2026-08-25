@@ -24,6 +24,10 @@ const MAX_MEMORY_AREAS = 40;
 // slice to the search centre and discard the rest.
 const MAX_PLACES_PER_AREA = 1500;
 const DEFAULT_RADIUS = 20000;
+// How far inside the baked footprint a search has to be to be answered from it.
+// Results are paged 20 at a time nearest-first, so a few km of cover around the
+// search point is plenty; this only rules out searches sitting on the edge.
+const EDGE_MARGIN = 3000;
 
 let zips = null;
 const memory = new Map();                     // key -> { center, places, at }
@@ -106,10 +110,22 @@ export async function areaFor({ lat, lng, radius = DEFAULT_RADIUS }, baked) {
 
   if (baked?.places?.length) {
     const home = baked.center;
-    // Inside the baked footprint (minus a margin so edge searches still get a
-    // full ring of results) the local dataset is strictly better: instant.
-    if (distanceKm(home, center) * 1000 < Math.max(0, (baked.radiusMeters ?? DEFAULT_RADIUS) - radius / 2)) {
-      return { center: home, places: baked.places, source: "local" };
+    // Inside the baked footprint the local dataset is strictly better: it is
+    // instant, and it cannot be rate-limited. Only the outer ring is excluded,
+    // where a search would be missing the half of its neighbourhood that falls
+    // outside the bake.
+    //
+    // The old margin was radius/2 -- half the *search* radius, not the bake's.
+    // With both at 20km that admitted only the inner 10km, which put Bethlehem
+    // (10.4-10.7km out) on the live path: the app's own home city queried
+    // Overpass for restaurants that were already sitting in memory.
+    const bakedRadius = baked.radiusMeters ?? DEFAULT_RADIUS;
+    if (distanceKm(home, center) * 1000 <= Math.max(0, bakedRadius - EDGE_MARGIN)) {
+      // Centre on what was actually searched, not on home. searchPlaces filters
+      // by distance from this point, so returning `home` here made every ZIP in
+      // the valley return the same Allentown-centred list -- the ZIP the visitor
+      // typed changed nothing.
+      return { center, places: baked.places, source: "local" };
     }
   }
 
