@@ -18,6 +18,7 @@ import {
   filterRestaurantsClientSide,
 } from "../utils/restaurantFilters";
 import { useLocalStorage } from "../hooks/useLocalStorage";
+import { FALLBACK_IMAGE } from "../lib/fallbackImage";
 
 type Props = {
   restaurants: Restaurant[];
@@ -26,7 +27,6 @@ type Props = {
   activeRestaurantDetails?: RestaurantDetails | null;
 };
 
-const FALLBACK_IMAGE = "https://source.unsplash.com/160x160/?restaurant,food";
 
 type ChatMessage = ChatHistoryItem & {
   recommendations?: RestaurantContextPayload[];

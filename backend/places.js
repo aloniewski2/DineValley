@@ -34,7 +34,7 @@ const searchText = (p) =>
   [p.name, p.brand, p.address, ...p.types, ...p.cuisine, ...p.dietary]
     .filter(Boolean).join(" ").toLowerCase();
 
-function distanceMeters(a, b) {
+export function distanceMeters(a, b) {
   const R = 6371000, toRad = (d) => (d * Math.PI) / 180;
   const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng);
   const s =

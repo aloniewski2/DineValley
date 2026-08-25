@@ -9,6 +9,7 @@ import { fetchRestaurants, fetchRestaurantDetails } from "./api/restaurants";
 import { useLocalStorage } from "./hooks/useLocalStorage";
 import { AssistantChatWidget } from "./components/AssistantChatWidget";
 import { KNOWN_CUISINES } from "./utils/restaurantFilters";
+import DecidePage from "./sections/MainContent/DecidePage";
 
 const SHUFFLE_KEYWORDS = [
   "restaurant",
@@ -39,11 +40,12 @@ const shuffleArray = <T,>(items: T[]): T[] => {
   }
   return array;
 };
-export type Page = "discover" | "recommendations" | "profile" | "restaurant-details";
+export type Page = "decide" | "discover" | "recommendations" | "profile" | "restaurant-details";
 type Theme = "light" | "dark";
 
 export const App = () => {
-  const [currentPage, setCurrentPage] = useState<Page>("discover");
+  const [currentPage, setCurrentPage] = useState<Page>("decide");
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedRestaurantId, setSelectedRestaurantId] = useState<string | null>(null);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
@@ -140,14 +142,30 @@ export const App = () => {
     [buildVisitSnapshot, setVisitHistory]
   );
 
+  /* This used to catch, console.error, and leave an empty list on screen for
+     good. On Render's free tier the backend sleeps, so the very first request
+     after an idle spell fails — and because this only runs once on mount, the
+     app then sat at "Page 0 of 0" forever with no error and no retry. That is
+     what made it look broken to whoever arrived first. Retry a few times with
+     backoff, and keep the failure where the UI can show it. */
   const loadRestaurants = useCallback(async () => {
-    try {
-      const data = await fetchRestaurants({ keyword: "restaurant" });
-      setRestaurants(data.results);
-      setNextPageToken(data.nextPageToken);
-    } catch (err) {
-      console.error("Failed to load restaurants", err);
+    setLoadError(null);
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const data = await fetchRestaurants({ keyword: "restaurant" });
+        setRestaurants(data.results);
+        setNextPageToken(data.nextPageToken);
+        return;
+      } catch (err) {
+        lastError = err;
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+      }
     }
+    console.error("Failed to load restaurants", lastError);
+    setLoadError(
+      lastError instanceof Error ? lastError.message : "Couldn't reach the server"
+    );
   }, []);
 
   useEffect(() => {
@@ -250,7 +268,7 @@ export const App = () => {
     setSelectedRestaurantId(null);
     setSelectedRestaurantSnapshot(null);
     setSelectedRestaurantDetails(null);
-    setCurrentPage("discover");
+    setCurrentPage("decide");
   };
 
   const handleToggleFavorite = useCallback(
@@ -426,6 +444,16 @@ export const App = () => {
 
   const renderPage = () => {
     switch (currentPage) {
+      case "decide":
+        return (
+          <DecidePage
+            onSelectRestaurant={handleSelectRestaurant}
+            onToggleFavorite={handleToggleFavorite}
+            favorites={favoriteIds}
+            onCheckIn={handleCheckIn}
+            visitStats={visitStats}
+          />
+        );
       case "discover":
         return (
           <DiscoverPage
@@ -498,6 +526,21 @@ export const App = () => {
       <div className="flex h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 transition-colors duration-300">
         <Sidebar onNavigate={handleNavigate} currentPage={currentPage} />
         <div className="flex-1 flex flex-col overflow-y-auto bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
+          {loadError && (
+            <div className="mx-4 mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800 dark:bg-red-500/10 dark:text-red-300">
+              <p className="font-medium">{loadError}</p>
+              <p className="mt-0.5 text-xs opacity-80">
+                The server sleeps when it has been quiet — it usually wakes within a minute.
+              </p>
+              <button
+                type="button"
+                onClick={loadRestaurants}
+                className="mt-2 rounded border border-red-300 px-3 py-1 text-xs font-semibold hover:bg-red-100 dark:border-red-500/40 dark:hover:bg-red-500/10"
+              >
+                Try again
+              </button>
+            </div>
+          )}
           {renderPage()}
         </div>
       </div>

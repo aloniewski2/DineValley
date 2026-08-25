@@ -1,4 +1,5 @@
 import { Restaurant, RestaurantDetails, RestaurantReview } from "../../types";
+import { FALLBACK_IMAGE } from "../lib/fallbackImage";
 
 const API_BASE =
   typeof import.meta !== "undefined" && import.meta.env?.VITE_API_BASE_URL
@@ -63,7 +64,7 @@ export async function fetchRestaurantDetails(id: string): Promise<RestaurantDeta
     phone: data.phone ?? undefined,
     website: data.website ?? undefined,
     openingHours: Array.isArray(data.openingHours) ? data.openingHours : [],
-    imageUrl: data.imageUrl ?? "https://source.unsplash.com/600x400/?restaurant",
+    imageUrl: data.imageUrl ?? FALLBACK_IMAGE,
     photoUrls: Array.isArray(data.photoUrls) ? data.photoUrls : undefined,
     reviews: Array.isArray(data.reviews) ? data.reviews.map(mapReview) : [],
     googleMapsUrl: data.googleMapsUrl ?? undefined,
@@ -82,4 +83,61 @@ export interface MenuVisionSection {
 export interface MenuVisionResult {
   sections: MenuVisionSection[];
   raw?: string;
+}
+
+
+export interface DecideParams {
+  zip?: string;
+  lat?: number;
+  lng?: number;
+  minutes: number;
+  mode: "walk" | "drive";
+  kinds?: string[];
+  cuisines?: string[];
+  independent?: boolean;
+  openNow?: boolean;
+  maxPrice?: number | null;
+  dietary?: string[];
+  limit?: number;
+}
+
+export interface DecideResponse {
+  results: Restaurant[];
+  considered: number;
+  matchedTag: number;
+  budget: { minutes: number; mode: string; metres: number };
+}
+
+/** Ask the backend for a shortlist rather than a page of everything nearby. */
+export async function decideRestaurants(params: DecideParams): Promise<DecideResponse> {
+  const q = new URLSearchParams();
+  if (params.zip) q.append("zip", params.zip);
+  if (params.lat !== undefined && params.lng !== undefined) {
+    q.append("lat", String(params.lat));
+    q.append("lng", String(params.lng));
+  }
+  q.append("minutes", String(params.minutes));
+  q.append("mode", params.mode);
+  if (params.kinds?.length) q.append("kinds", params.kinds.join(","));
+  if (params.cuisines?.length) q.append("cuisines", params.cuisines.join(","));
+  if (params.dietary?.length) q.append("dietary", params.dietary.join(","));
+  if (params.independent) q.append("independent", "true");
+  if (params.openNow) q.append("openNow", "true");
+  if (params.maxPrice !== null && params.maxPrice !== undefined) {
+    q.append("maxPrice", String(params.maxPrice));
+  }
+  q.append("limit", String(params.limit ?? 8));
+
+  const response = await fetch(`${API_BASE}/decide?${q.toString()}`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error || "Could not work out a shortlist");
+  }
+  const data = await response.json();
+  return {
+    results: Array.isArray(data.results) ? data.results : [],
+    considered: data.considered ?? 0,
+    matchedTag: data.matchedTag ?? 0,
+    budget: data.budget ?? { minutes: params.minutes, mode: params.mode, metres: 0 },
+  };
 }

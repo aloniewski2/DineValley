@@ -1,3 +1,12 @@
+/** Why a place made the shortlist. `unknown` is a first-class outcome: OSM
+ *  simply has no dietary tag for most places, and saying so is more useful
+ *  than implying a "no". */
+export interface MatchReason {
+  kind: "match" | "bonus" | "unknown" | "miss";
+  label: string;
+  weight: number;
+}
+
 export interface Restaurant {
   id: string;
   name: string;
@@ -14,6 +23,12 @@ export interface Restaurant {
   hasVisited?: boolean;
   visitCount?: number;
   lastVisited?: string | null;
+  /* Present only on results from /decide. */
+  minutes?: number;
+  metres?: number;
+  matchScore?: number;
+  reasons?: MatchReason[];
+  independent?: boolean;
 }
 
 export interface RestaurantReview {
