@@ -222,8 +222,33 @@ app.get("/decide", async (req, res) => {
     const travelMode = mode === "walk" ? "walk" : "drive";
     const maxMinutes = Math.min(60, Math.max(1, Number(minutes) || 15));
 
+    /* Load the places around wherever they're starting from.
+     *
+     * This used to hand the solver meta().dataset.places unconditionally -- the
+     * baked Lehigh Valley -- and only move `center`. So a ZIP anywhere else was
+     * measuring the travel budget against restaurants a continent away, every
+     * one of them fell outside it, and the page said "Nothing fits all of that"
+     * as though the filters were too tight. /restaurants already did this; the
+     * page visitors actually land on did not.
+     *
+     * The area is fetched at the default radius rather than at the travel
+     * budget, so this shares one cached neighbourhood with /restaurants instead
+     * of asking Overpass a second, differently-sized question about the same
+     * place. The budget is a filter the solver applies on top. */
+    let area = null;
+    try {
+      area = await areaFor({ ...center }, meta().dataset);
+    } catch (err) {
+      if (err.code === "AREA_UNAVAILABLE") {
+        return res.status(503).json({
+          error: "Couldn't load restaurants for that area just now — OpenStreetMap is busy. Try again in a moment.",
+        });
+      }
+      throw err;
+    }
+
     const { results, considered, matchedTag } = decide({
-      places: meta().dataset.places,
+      places: area?.places?.length ? area.places : meta().dataset.places,
       center,
       maxMinutes,
       mode: travelMode,

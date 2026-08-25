@@ -18,9 +18,17 @@ const AMENITIES = "restaurant|cafe|fast_food|bar|pub|ice_cream";
 // trimming afterwards is far too late.
 export const ELEMENT_CAP = 2500;
 
+// Overpass's own [timeout:] governs how long *it* will spend on the query. It
+// says nothing about a mirror that accepts the connection and then stops
+// talking, and fetch() without a signal waits for that forever. Three mirrors
+// tried in turn meant one request could hang indefinitely, holding a worker
+// open until the host killed it -- which is what a visitor saw as a 502.
+const ENDPOINT_TIMEOUT_MS = 25000;
+const QUERY_TIMEOUT_S = 20;
+
 export function overpassQuery(lat, lng, radius, cap = ELEMENT_CAP) {
   return `
-[out:json][timeout:60];
+[out:json][timeout:${QUERY_TIMEOUT_S}];
 (
   node["amenity"~"^(${AMENITIES})$"](around:${radius},${lat},${lng});
   way ["amenity"~"^(${AMENITIES})$"](around:${radius},${lat},${lng});
@@ -33,16 +41,29 @@ export async function fetchElements(lat, lng, radius, { log = () => {}, cap = EL
   for (const url of ENDPOINTS) {
     try {
       log(`  querying ${new URL(url).host}… `);
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          "content-type": "application/x-www-form-urlencoded",
-          "user-agent": "dinevalley/1.0 (portfolio project)",
-        },
-        body: new URLSearchParams({ data: overpassQuery(lat, lng, radius, cap) }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
+      const abort = new AbortController();
+      const timer = setTimeout(() => abort.abort(), ENDPOINT_TIMEOUT_MS);
+      let json;
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: {
+            "content-type": "application/x-www-form-urlencoded",
+            "user-agent": "dinevalley/1.0 (portfolio project)",
+          },
+          body: new URLSearchParams({ data: overpassQuery(lat, lng, radius, cap) }),
+          signal: abort.signal,
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        // Reading the body can hang too, so it stays inside the timeout.
+        json = await res.json();
+      } catch (err) {
+        throw abort.signal.aborted
+          ? new Error(`no answer in ${ENDPOINT_TIMEOUT_MS / 1000}s`)
+          : err;
+      } finally {
+        clearTimeout(timer);
+      }
 
       // Overpass reports overload in-band: HTTP 200 with a `remark` and no
       // elements. Taking that at face value looks exactly like "this area has
