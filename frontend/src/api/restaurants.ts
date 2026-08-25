@@ -32,7 +32,14 @@ export async function fetchRestaurants(filters: BackendFilters): Promise<Restaur
   if (filters.zip) params.append("zip", filters.zip);
 
   const response = await fetch(`${API_BASE}/restaurants?${params.toString()}`);
-  if (!response.ok) throw new Error("Failed to fetch restaurants");
+  if (!response.ok) {
+    // The server says something useful here -- which ZIP it has no centroid
+    // for, or that OpenStreetMap is busy and this is worth retrying. Replacing
+    // that with "Failed to fetch restaurants" told the visitor nothing and made
+    // a temporary problem look permanent.
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error || "Failed to fetch restaurants");
+  }
 
   const data = await response.json();
 

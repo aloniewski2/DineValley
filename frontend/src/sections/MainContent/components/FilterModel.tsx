@@ -157,7 +157,7 @@ export const FilterModel: React.FC<FilterModelProps> = ({
               className="w-full accent-indigo-500"
             />
             <p className="mt-1 text-xs text-gray-500">
-              Adjust to search within a specific radius of the Lehigh Valley.
+              Adjust to search within a specific radius of the ZIP you start from.
             </p>
           </div>
 

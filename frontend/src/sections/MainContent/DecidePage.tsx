@@ -150,7 +150,7 @@ export const DecidePage = ({
           Where should we eat?
         </h1>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Set the constraints. We'll narrow {considered ? `${considered} places` : "the valley"} down
+          Set the constraints. We'll narrow {considered ? `${considered} places` : "what's around you"} down
           to a handful and show why each one made it.
         </p>
       </header>
