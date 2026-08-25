@@ -9,8 +9,13 @@ interface SidebarProps {
 
 const navItems = [
   {
+    key: "decide",
+    label: "Decide",
+    icon: <Sparkles size={20} />,
+  },
+  {
     key: "discover",
-    label: "Discover",
+    label: "Browse all",
     icon: <Search size={20} />,
   },
   {

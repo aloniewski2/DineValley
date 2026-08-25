@@ -7,6 +7,7 @@ import {
   toCard, toDetails, placeholderSvg,
 } from "./places.js";
 import { areaFor, centerForZip, loadZips, findCached } from "./areas.js";
+import { decide, TRAVEL_SPEEDS } from "./solver.js";
 import { imageForPlace, loadImageCache, imageCacheStats } from "./preview.js";
 
 dotenv.config();
@@ -184,6 +185,76 @@ app.get("/restaurants", async (req, res) => {
   } catch (error) {
     console.error("❌ Search failed:", error.message);
     res.status(500).json({ error: "Failed to fetch restaurants", details: error.message });
+  }
+});
+
+
+/* The decision endpoint.
+ *
+ * `/restaurants` answers "what is near here", which is the question Google
+ * Maps already answers better. This answers "given these constraints, where
+ * should we go" — and returns the short list with its reasoning attached,
+ * rather than a thousand rows and a star rating we do not have. */
+app.get("/decide", async (req, res) => {
+  try {
+    const {
+      zip, lat, lng, minutes, mode, kinds, cuisines,
+      independent, openNow, maxPrice, dietary, limit,
+    } = req.query;
+
+    let center = null;
+    if (zip) {
+      center = centerForZip(zip);
+      if (!center) {
+        return res.status(400).json({
+          error: /^\d{5}$/.test(String(zip))
+            ? `We don't have a location for ZIP ${zip}. Try a nearby one.`
+            : `"${String(zip).slice(0, 12)}" isn't a five-digit ZIP code.`,
+        });
+      }
+    } else if (Number.isFinite(Number(lat)) && Number.isFinite(Number(lng))) {
+      center = { lat: Number(lat), lng: Number(lng) };
+    } else {
+      center = meta().center;          // the valley itself, so the page is never empty
+    }
+
+    const list = (v) => String(v || "").split(",").map((x) => x.trim()).filter(Boolean);
+    const travelMode = mode === "walk" ? "walk" : "drive";
+    const maxMinutes = Math.min(60, Math.max(1, Number(minutes) || 15));
+
+    const { results, considered, matchedTag } = decide({
+      places: meta().dataset.places,
+      center,
+      maxMinutes,
+      mode: travelMode,
+      kinds: list(kinds),
+      cuisines: list(cuisines),
+      independentOnly: independent === "true",
+      openNow: openNow === "true",
+      maxPrice: Number.isFinite(Number(maxPrice)) ? Number(maxPrice) : null,
+      dietary: list(dietary),
+      limit: Math.min(20, Math.max(1, Number(limit) || 8)),
+    });
+
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    res.json({
+      results: results.map((r) => ({
+        ...toCard(r.place, baseUrl),
+        minutes: r.minutes,
+        metres: Math.round(r.metres),
+        matchScore: r.score,
+        reasons: r.reasons,
+        independent: !r.place.brand,
+      })),
+      considered,
+      matchedTag,
+      center,
+      budget: { minutes: maxMinutes, mode: travelMode, metres: maxMinutes * TRAVEL_SPEEDS[travelMode] },
+      attribution: meta().attribution,
+    });
+  } catch (error) {
+    console.error("❌ Decide failed:", error.message);
+    res.status(500).json({ error: "Failed to work out a shortlist", details: error.message });
   }
 });
 

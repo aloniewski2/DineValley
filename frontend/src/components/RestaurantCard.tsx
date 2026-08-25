@@ -1,6 +1,7 @@
 import React from "react";
 import { Heart } from "lucide-react";
 import { Restaurant } from "../../types";
+import { FALLBACK_IMAGE } from "../lib/fallbackImage";
 
 interface RestaurantCardProps {
   restaurant: Restaurant;
@@ -33,8 +34,15 @@ export const RestaurantCard = ({
 }: RestaurantCardProps) => {
   const { imageUrl, name, rating, reviewCount, address, priceLevel, types, isFavorite, businessStatus, openNow, dietary } =
     restaurant;
-  const resolvedImageUrl = imageUrl || "https://source.unsplash.com/400x300/?restaurant,food";
+  const { reasons, matchScore } = restaurant;
+  const resolvedImageUrl = imageUrl || FALLBACK_IMAGE;
   const formattedVisitDate = formatLastVisit(lastVisited);
+  const scoreBadge =
+    typeof matchScore === "number" ? (
+      <span className="absolute left-2 top-2 rounded-full bg-emerald-600/95 px-2 py-0.5 text-xs font-semibold text-white shadow">
+        {matchScore}% match
+      </span>
+    ) : null;
 
   return (
     <div
@@ -50,11 +58,12 @@ export const RestaurantCard = ({
           className="object-cover w-full h-48"
           onError={(e) => {
             const target = e.currentTarget as HTMLImageElement;
-            if (target.src !== "https://source.unsplash.com/400x300/?restaurant,food") {
-              target.src = "https://source.unsplash.com/400x300/?restaurant,food";
+            if (target.src !== FALLBACK_IMAGE) {
+              target.src = FALLBACK_IMAGE;
             }
           }}
         />
+        {scoreBadge}
 
         {businessStatus !== "OPERATIONAL" && (
           <div className="absolute px-2 py-1 text-xs font-medium text-white bg-red-500 rounded top-2 left-2">
@@ -122,6 +131,31 @@ export const RestaurantCard = ({
             ))}
           </div>
         )}
+
+        {/* Why this made the shortlist. Shown for /decide results only, and it
+            distinguishes what we know from what OSM never recorded — an
+            "unknown" chip is not a negative, and pretending otherwise is how a
+            recommender starts lying. */}
+        {reasons?.length ? (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {reasons.map((reason, i) => (
+              <span
+                key={`${reason.label}-${i}`}
+                className={
+                  "rounded-full px-2 py-0.5 text-xs font-medium " +
+                  (reason.kind === "match" || reason.kind === "bonus"
+                    ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
+                    : reason.kind === "unknown"
+                    ? "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
+                    : "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300")
+                }
+              >
+                {reason.kind === "unknown" ? "? " : ""}
+                {reason.label}
+              </span>
+            ))}
+          </div>
+        ) : null}
 
         {(onCheckIn || visited) && (
           <div className="mt-3 flex flex-wrap items-center gap-2">

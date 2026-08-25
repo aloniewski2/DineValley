@@ -3,6 +3,7 @@ import { Restaurant, RestaurantDetails, VisitStatsEntry } from "../../../types";
 import { Heart, Globe, Phone, Navigation, MapPin, CheckCircle2, Sparkles } from "lucide-react";
 import { StatusBanner } from "../../components/StatusBanner";
 import { askAssistant, ComparisonResult, RestaurantContextPayload } from "../../api/assistant";
+import { FALLBACK_IMAGE } from "../../lib/fallbackImage";
 
 export interface RestaurantDetailsPageProps {
   restaurantId: string;
@@ -365,7 +366,7 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
 
   const totalPhotos = photoSources.length;
   const hasMultiplePhotos = totalPhotos > 1;
-  const currentPhoto = photoSources[photoIndex] ?? display?.imageUrl ?? "https://source.unsplash.com/600x400/?restaurant";
+  const currentPhoto = photoSources[photoIndex] ?? display?.imageUrl ?? FALLBACK_IMAGE;
 
   const showPrevPhoto = () => {
     if (!hasMultiplePhotos) return;
@@ -398,7 +399,7 @@ export const RestaurantDetailsPage: React.FC<RestaurantDetailsPageProps> = ({
     const payload: Restaurant = {
       id: display.id,
       name: display.name,
-      imageUrl: display.imageUrl || fallbackRestaurant?.imageUrl || "https://source.unsplash.com/400x300/?restaurant,food",
+      imageUrl: display.imageUrl || fallbackRestaurant?.imageUrl || FALLBACK_IMAGE,
       rating: display.rating,
       reviewCount: display.reviewCount,
       address: display.address,
