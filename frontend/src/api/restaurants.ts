@@ -59,6 +59,18 @@ function endpointUrl(path: string, params: URLSearchParams): string {
   return url.toString();
 }
 
+/* A search term is words: letters, numbers, spaces, and the punctuation that
+ * turns up inside a restaurant's name ("Mario's", "Chickie's & Pete's",
+ * "Grille 3501"). Everything else is dropped rather than sent -- the backend
+ * matches on lowercased substrings and has no use for it, and it keeps the one
+ * free-text value in the app from reaching a URL unexamined. */
+const searchTerm = (value: string, max: number): string =>
+  String(value)
+    .replace(/[^\p{L}\p{N}\s'&-]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, max);
+
 const digitsOnly = (value: string, max: number): string =>
   String(value).replace(/\D/g, "").slice(0, max);
 
@@ -68,7 +80,8 @@ const finite = (value: unknown): number | null =>
 export async function fetchRestaurants(filters: BackendFilters): Promise<RestaurantsResponse> {
   const params = new URLSearchParams();
 
-  if (filters.keyword) params.append("keyword", String(filters.keyword).slice(0, 120));
+  const keyword = filters.keyword ? searchTerm(filters.keyword, 120) : "";
+  if (keyword) params.append("keyword", keyword);
   const minPrice = finite(filters.minPrice);
   if (filters.minPrice !== undefined && minPrice !== null) {
     params.append("minPrice", String(minPrice));
