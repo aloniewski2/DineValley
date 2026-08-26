@@ -83,7 +83,9 @@ export async function fillAreaFromBrowser(area: UnavailableArea): Promise<boolea
   const params = new URLSearchParams({ lat: String(area.lat), lng: String(area.lng) });
   if (area.radius !== undefined) params.append("radius", String(area.radius));
 
-  const planRes = await fetch(`${API_BASE}/area-query?${params.toString()}`);
+  const planUrl = new URL(`${API_BASE}/area-query`);
+  planUrl.search = params.toString();
+  const planRes = await fetch(planUrl.toString());
   if (!planRes.ok) return false;
   const { query, endpoints, elementCap } = await planRes.json();
   if (!query || !Array.isArray(endpoints) || endpoints.length === 0) return false;

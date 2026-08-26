@@ -47,6 +47,18 @@ export interface RestaurantsResponse {
  * rather than typed by anyone, and a ZIP arrives from a text box, so each is
  * held to the shape the server will accept anyway. Anything that isn't that
  * shape is dropped here rather than sent and refused. */
+/* The endpoint is built rather than concatenated.
+ *
+ * A search keyword is whatever someone typed, and pasting it into a template
+ * string makes user text part of the URL itself. Setting `search` on a URL
+ * whose origin and path are already fixed keeps that text where it belongs --
+ * it can shape the query and nothing else, whatever it contains. */
+function endpointUrl(path: string, params: URLSearchParams): string {
+  const url = new URL(`${API_BASE}${path}`);
+  url.search = params.toString();
+  return url.toString();
+}
+
 const digitsOnly = (value: string, max: number): string =>
   String(value).replace(/\D/g, "").slice(0, max);
 
@@ -80,9 +92,10 @@ export async function fetchRestaurants(filters: BackendFilters): Promise<Restaur
   const zip = filters.zip ? digitsOnly(filters.zip, 5) : "";
   if (zip) params.append("zip", zip);
 
-  let response = await fetch(`${API_BASE}/restaurants?${params.toString()}`);
+  const target = endpointUrl("/restaurants", params);
+  let response = await fetch(target);
   if (!response.ok && (await retryAfterFillingArea(response))) {
-    response = await fetch(`${API_BASE}/restaurants?${params.toString()}`);
+    response = await fetch(target);
   }
   if (!response.ok) {
     // The server says something useful here -- which ZIP it has no centroid
@@ -190,9 +203,10 @@ export async function decideRestaurants(params: DecideParams): Promise<DecideRes
   }
   q.append("limit", String(params.limit ?? 8));
 
-  let response = await fetch(`${API_BASE}/decide?${q.toString()}`);
+  const target = endpointUrl("/decide", q);
+  let response = await fetch(target);
   if (!response.ok && (await retryAfterFillingArea(response))) {
-    response = await fetch(`${API_BASE}/decide?${q.toString()}`);
+    response = await fetch(target);
   }
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
