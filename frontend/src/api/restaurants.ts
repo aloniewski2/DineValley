@@ -1,11 +1,8 @@
 import { Restaurant, RestaurantDetails, RestaurantReview } from "../../types";
 import { FALLBACK_IMAGE } from "../lib/fallbackImage";
 import { fillAreaFromBrowser, unavailableAreaOf } from "./areaFallback";
+import { API_BASE } from "./apiBase";
 
-const API_BASE =
-  typeof import.meta !== "undefined" && import.meta.env?.VITE_API_BASE_URL
-    ? import.meta.env.VITE_API_BASE_URL.replace(/\/$/, "")
-    : "https://dinevalley-backend.onrender.com";
 /**
  * The server says AREA_UNAVAILABLE when OpenStreetMap refused *it* -- which on
  * a shared host IP happens for areas a visitor's own browser is served fine.
@@ -87,33 +84,42 @@ const digitsOnly = (value: string, max: number): string =>
 const finite = (value: unknown): number | null =>
   Number.isFinite(Number(value)) ? Number(value) : null;
 
-export async function fetchRestaurants(filters: BackendFilters): Promise<RestaurantsResponse> {
+/* Building the query is its own job. Folded into the fetch it made one
+ * function responsible for validating seven fields and performing a request
+ * with a retry, which is more than one thing. */
+function restaurantParams(filters: BackendFilters): URLSearchParams {
   const params = new URLSearchParams();
 
   const keyword = filters.keyword ? searchTerm(filters.keyword, 120) : "";
   if (keyword) params.append("keyword", keyword);
+
   const minPrice = finite(filters.minPrice);
-  if (filters.minPrice !== undefined && minPrice !== null) {
-    params.append("minPrice", String(minPrice));
-  }
+  if (minPrice !== null) params.append("minPrice", String(minPrice));
+
   const maxPrice = finite(filters.maxPrice);
-  if (filters.maxPrice !== undefined && maxPrice !== null) {
-    params.append("maxPrice", String(maxPrice));
-  }
+  if (maxPrice !== null) params.append("maxPrice", String(maxPrice));
+
   if (filters.openNow) params.append("openNow", "true");
+
   // The server reads this with parseInt; anything else is not a page.
   const pageToken = filters.pageToken ? digitsOnly(filters.pageToken, 9) : "";
   if (pageToken) params.append("pageToken", pageToken);
+
   const radius = finite(filters.radiusMeters);
-  if (filters.radiusMeters !== undefined && radius !== null) {
-    params.append("radius", String(radius));
-  }
+  if (radius !== null) params.append("radius", String(radius));
+
   // Sent whenever it has any digits at all, rather than only when it is five:
   // the server explains a short ZIP better than silence does ("0000 isn't a
   // five-digit ZIP code"), and dropping it here would search the default area
   // as though nothing had been typed.
   const zip = filters.zip ? digitsOnly(filters.zip, 5) : "";
   if (zip) params.append("zip", zip);
+
+  return params;
+}
+
+export async function fetchRestaurants(filters: BackendFilters): Promise<RestaurantsResponse> {
+  const params = restaurantParams(filters);
 
   const target = endpointUrl("/restaurants", params);
   let response = await fetch(target);

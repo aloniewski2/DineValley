@@ -13,10 +13,7 @@
  * anything -- one visitor's request repairs the area for everyone.
  */
 
-const API_BASE =
-  typeof import.meta !== "undefined" && import.meta.env?.VITE_API_BASE_URL
-    ? import.meta.env.VITE_API_BASE_URL.replace(/\/$/, "")
-    : "https://dinevalley-backend.onrender.com";
+import { API_BASE } from "./apiBase";
 
 /** The centre the server failed on, handed back with its 503. */
 export interface UnavailableArea {
@@ -32,7 +29,7 @@ export interface UnavailableArea {
  */
 export function unavailableAreaOf(body: unknown): UnavailableArea | null {
   const b = body as { code?: string; area?: Partial<UnavailableArea> } | null;
-  if (!b || b.code !== "AREA_UNAVAILABLE") return null;
+  if (b?.code !== "AREA_UNAVAILABLE") return null;
   const { lat, lng, radius } = b.area ?? {};
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   if (Math.abs(lat as number) > 90 || Math.abs(lng as number) > 180) return null;

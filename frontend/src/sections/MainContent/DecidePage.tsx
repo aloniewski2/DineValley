@@ -178,6 +178,10 @@ export const DecidePage = ({
 
   const askedForTag = dietary.length > 0;
 
+  let locationButtonLabel = "Use my location";
+  if (locating) locationButtonLabel = "Finding you…";
+  else if (here) locationButtonLabel = "Use a ZIP code instead";
+
   return (
     <div className="px-4 py-6 md:px-8">
       <header className="mb-6">
@@ -215,7 +219,7 @@ export const DecidePage = ({
               disabled={locating}
               className="mt-2 text-xs text-emerald-700 underline-offset-2 hover:underline disabled:opacity-50 dark:text-emerald-400"
             >
-              {locating ? "Finding you…" : here ? "Use a ZIP code instead" : "Use my location"}
+              {locationButtonLabel}
             </button>
             {locateError && (
               <p className="mt-1 text-xs text-amber-700 dark:text-amber-500">{locateError}</p>
