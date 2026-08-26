@@ -25,12 +25,22 @@ export interface UnavailableArea {
   radius?: number;
 }
 
+/**
+ * These coordinates arrive in a response body and then go into a request URL,
+ * so they are held to what a coordinate can actually be before they travel any
+ * further. A centre off the globe is not a centre.
+ */
 export function unavailableAreaOf(body: unknown): UnavailableArea | null {
   const b = body as { code?: string; area?: Partial<UnavailableArea> } | null;
   if (!b || b.code !== "AREA_UNAVAILABLE") return null;
   const { lat, lng, radius } = b.area ?? {};
-  if (typeof lat !== "number" || typeof lng !== "number") return null;
-  return { lat, lng, radius: typeof radius === "number" ? radius : undefined };
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (Math.abs(lat as number) > 90 || Math.abs(lng as number) > 180) return null;
+  const bounded =
+    Number.isFinite(radius) && (radius as number) > 0
+      ? Math.min(50000, Math.round(radius as number))
+      : undefined;
+  return { lat: lat as number, lng: lng as number, radius: bounded };
 }
 
 const ENDPOINT_TIMEOUT_MS = 25000;

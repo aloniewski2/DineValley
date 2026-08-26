@@ -39,16 +39,46 @@ export interface RestaurantsResponse {
   nextPageToken: string | null;
 }
 
+/* Search values are validated on the way into a query string.
+ *
+ * URLSearchParams already encodes what it is given, so none of these could
+ * break out of the query and reach another path. The point is narrower and
+ * still worth having: a page token is echoed back from a previous response
+ * rather than typed by anyone, and a ZIP arrives from a text box, so each is
+ * held to the shape the server will accept anyway. Anything that isn't that
+ * shape is dropped here rather than sent and refused. */
+const digitsOnly = (value: string, max: number): string =>
+  String(value).replace(/\D/g, "").slice(0, max);
+
+const finite = (value: unknown): number | null =>
+  Number.isFinite(Number(value)) ? Number(value) : null;
+
 export async function fetchRestaurants(filters: BackendFilters): Promise<RestaurantsResponse> {
   const params = new URLSearchParams();
 
-  if (filters.keyword) params.append("keyword", filters.keyword);
-  if (filters.minPrice !== undefined) params.append("minPrice", filters.minPrice.toString());
-  if (filters.maxPrice !== undefined) params.append("maxPrice", filters.maxPrice.toString());
+  if (filters.keyword) params.append("keyword", String(filters.keyword).slice(0, 120));
+  const minPrice = finite(filters.minPrice);
+  if (filters.minPrice !== undefined && minPrice !== null) {
+    params.append("minPrice", String(minPrice));
+  }
+  const maxPrice = finite(filters.maxPrice);
+  if (filters.maxPrice !== undefined && maxPrice !== null) {
+    params.append("maxPrice", String(maxPrice));
+  }
   if (filters.openNow) params.append("openNow", "true");
-  if (filters.pageToken) params.append("pageToken", filters.pageToken);
-  if (filters.radiusMeters !== undefined) params.append("radius", filters.radiusMeters.toString());
-  if (filters.zip) params.append("zip", filters.zip);
+  // The server reads this with parseInt; anything else is not a page.
+  const pageToken = filters.pageToken ? digitsOnly(filters.pageToken, 9) : "";
+  if (pageToken) params.append("pageToken", pageToken);
+  const radius = finite(filters.radiusMeters);
+  if (filters.radiusMeters !== undefined && radius !== null) {
+    params.append("radius", String(radius));
+  }
+  // Sent whenever it has any digits at all, rather than only when it is five:
+  // the server explains a short ZIP better than silence does ("0000 isn't a
+  // five-digit ZIP code"), and dropping it here would search the default area
+  // as though nothing had been typed.
+  const zip = filters.zip ? digitsOnly(filters.zip, 5) : "";
+  if (zip) params.append("zip", zip);
 
   let response = await fetch(`${API_BASE}/restaurants?${params.toString()}`);
   if (!response.ok && (await retryAfterFillingArea(response))) {
