@@ -168,3 +168,24 @@ export async function areaFor({ lat, lng, radius = DEFAULT_RADIUS }, baked) {
     inflight.delete(key);
   }
 }
+
+/**
+ * Store an area that somebody else fetched from Overpass.
+ *
+ * Overpass rate-limits by IP, and a free host's egress address is shared with
+ * everyone else on it, so the server can be refused for an area a visitor's own
+ * browser is served happily. When that happens the browser fetches the area and
+ * hands the raw elements here: they go through the same normalise/trim/cache
+ * path as a server-side fetch, so a place fetched this way is shaped exactly
+ * like any other -- and the next visitor to that area is served from cache
+ * without anyone querying anything.
+ */
+export function storeArea({ lat, lng, radius = DEFAULT_RADIUS }, elements) {
+  const center = { lat, lng };
+  const places = trimToRadius(normalise(elements), lat, lng);
+  const key = keyFor(lat, lng, radius);
+  const payload = { center, places, at: new Date().toISOString() };
+  remember(key, payload);
+  void writeDisk(key, payload);
+  return { center, places, source: "browser" };
+}

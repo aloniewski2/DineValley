@@ -6,8 +6,9 @@ import {
   loadPlaces, meta, searchPlaces, findPlace,
   toCard, toDetails, placeholderSvg,
 } from "./places.js";
-import { areaFor, centerForZip, loadZips, findCached } from "./areas.js";
+import { areaFor, centerForZip, loadZips, findCached, storeArea } from "./areas.js";
 import { decide, TRAVEL_SPEEDS } from "./solver.js";
+import { ELEMENT_CAP, overpassQuery, OVERPASS_ENDPOINTS } from "./osm.js";
 import { imageForPlace, loadImageCache, imageCacheStats } from "./preview.js";
 
 dotenv.config();
@@ -129,6 +130,64 @@ app.get("/health", (_, res) => res.status(200).send("ok"));
 app.get("/api/hello", (_, res) => res.json({ ok: true, message: "DineValley API is up" }));
 
 // ✅ Nearby Restaurants — served from the local OpenStreetMap index
+/* Everything below serves the browser-assisted area fetch.
+ *
+ * Overpass rate-limits by IP. On a free host the egress address is shared with
+ * every other tenant, so mirrors that answer a visitor's laptop happily can
+ * refuse this server for the same query -- which is why a ZIP outside the baked
+ * region could work locally and fail in production. When that happens the page
+ * asks Overpass itself and posts the result back here.
+ *
+ * The query is served rather than reimplemented in the frontend, so there is
+ * still one definition of what "restaurants near here" means. */
+app.get("/area-query", (req, res) => {
+  const lat = Number(req.query.lat);
+  const lng = Number(req.query.lng);
+  const radius = Number.isFinite(Number(req.query.radius)) ? Number(req.query.radius) : 20000;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return res.status(400).json({ error: "lat and lng are required" });
+  }
+  res.json({
+    query: overpassQuery(lat, lng, radius),
+    endpoints: OVERPASS_ENDPOINTS,
+    elementCap: ELEMENT_CAP,
+  });
+});
+
+/* Take an area the browser fetched and cache it for everyone.
+ *
+ * This accepts data from a client, so it is bounded rather than trusted: the
+ * centre has to be a real coordinate, the payload is capped at the same element
+ * limit the server's own query uses, and every element goes through the same
+ * normaliser -- which keeps only the tags it understands and drops anything
+ * without a name and a position. The worst a bad payload achieves is a thin
+ * area that expires on its own. */
+app.post("/area", (req, res) => {
+  try {
+    const { lat, lng, radius, elements } = req.body ?? {};
+    const centreOk = Number.isFinite(Number(lat)) && Number.isFinite(Number(lng)) &&
+      Math.abs(Number(lat)) <= 90 && Math.abs(Number(lng)) <= 180;
+    if (!centreOk) return res.status(400).json({ error: "lat and lng must be a real coordinate" });
+    if (!Array.isArray(elements)) return res.status(400).json({ error: "elements must be an array" });
+    if (elements.length > ELEMENT_CAP) {
+      return res.status(413).json({ error: `at most ${ELEMENT_CAP} elements` });
+    }
+
+    const area = storeArea(
+      {
+        lat: Number(lat),
+        lng: Number(lng),
+        radius: Number.isFinite(Number(radius)) ? Number(radius) : undefined,
+      },
+      elements,
+    );
+    res.json({ ok: true, cached: area.places.length });
+  } catch (error) {
+    console.error("❌ Area store failed:", error.message);
+    res.status(500).json({ error: "Failed to store that area" });
+  }
+});
+
 app.get("/restaurants", async (req, res) => {
   try {
     const { keyword, minPrice, maxPrice, openNow, pageToken, radius, zip, lat, lng } = req.query;
@@ -158,9 +217,12 @@ app.get("/restaurants", async (req, res) => {
         area = await areaFor({ ...center, radius: radiusMeters }, meta().dataset);
       } catch (err) {
         if (err.code === "AREA_UNAVAILABLE") {
-          // Better an honest "try again" than a confident empty list.
+          // Better an honest "try again" than a confident empty list -- and
+          // enough detail that the browser can fetch the area itself.
           return res.status(503).json({
             error: "Couldn't load restaurants for that area just now — OpenStreetMap is busy. Try again in a moment.",
+            code: "AREA_UNAVAILABLE",
+            area: { lat: center.lat, lng: center.lng, radius: radiusMeters },
           });
         }
         throw err;
@@ -242,6 +304,8 @@ app.get("/decide", async (req, res) => {
       if (err.code === "AREA_UNAVAILABLE") {
         return res.status(503).json({
           error: "Couldn't load restaurants for that area just now — OpenStreetMap is busy. Try again in a moment.",
+          code: "AREA_UNAVAILABLE",
+          area: { lat: center.lat, lng: center.lng },
         });
       }
       throw err;
