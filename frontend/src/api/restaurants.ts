@@ -61,15 +61,25 @@ function endpointUrl(path: string, params: URLSearchParams): string {
 
 /* A search term is words: letters, numbers, spaces, and the punctuation that
  * turns up inside a restaurant's name ("Mario's", "Chickie's & Pete's",
- * "Grille 3501"). Everything else is dropped rather than sent -- the backend
- * matches on lowercased substrings and has no use for it, and it keeps the one
- * free-text value in the app from reaching a URL unexamined. */
-const searchTerm = (value: string, max: number): string =>
-  String(value)
+ * "Grille 3501"). The backend matches lowercased substrings and has no use for
+ * anything else.
+ *
+ * Two steps rather than one, and the second is the point. Tidying a value says
+ * nothing about what it now contains; the term is checked against the whole
+ * allowlist afterwards and only used if it passes, so nothing reaches the query
+ * on the strength of a transformation alone. Tidying first means the check
+ * passes for anything a person would actually type -- it is a guarantee, not a
+ * hurdle. */
+const SEARCH_TERM = /^[\p{L}\p{N} '&-]+$/u;
+
+function searchTerm(value: string, max: number): string {
+  const tidied = String(value)
     .replace(/[^\p{L}\p{N}\s'&-]/gu, " ")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, max);
+  return SEARCH_TERM.test(tidied) ? tidied : "";
+}
 
 const digitsOnly = (value: string, max: number): string =>
   String(value).replace(/\D/g, "").slice(0, max);
