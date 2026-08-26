@@ -1,10 +1,29 @@
 import { Restaurant, RestaurantDetails, RestaurantReview } from "../../types";
 import { FALLBACK_IMAGE } from "../lib/fallbackImage";
+import { fillAreaFromBrowser, unavailableAreaOf } from "./areaFallback";
 
 const API_BASE =
   typeof import.meta !== "undefined" && import.meta.env?.VITE_API_BASE_URL
     ? import.meta.env.VITE_API_BASE_URL.replace(/\/$/, "")
     : "https://dinevalley-backend.onrender.com";
+/**
+ * The server says AREA_UNAVAILABLE when OpenStreetMap refused *it* -- which on
+ * a shared host IP happens for areas a visitor's own browser is served fine.
+ * Fetch the area here, hand it over, and tell the caller to try again. A
+ * failure to do so is not worth surfacing: the caller falls through to the
+ * server's own message, which already says to retry.
+ */
+async function retryAfterFillingArea(response: Response): Promise<boolean> {
+  if (response.status !== 503) return false;
+  const area = unavailableAreaOf(await response.clone().json().catch(() => null));
+  if (!area) return false;
+  try {
+    return await fillAreaFromBrowser(area);
+  } catch {
+    return false;
+  }
+}
+
 export interface BackendFilters {
   keyword?: string;
   minPrice?: number;
@@ -31,7 +50,10 @@ export async function fetchRestaurants(filters: BackendFilters): Promise<Restaur
   if (filters.radiusMeters !== undefined) params.append("radius", filters.radiusMeters.toString());
   if (filters.zip) params.append("zip", filters.zip);
 
-  const response = await fetch(`${API_BASE}/restaurants?${params.toString()}`);
+  let response = await fetch(`${API_BASE}/restaurants?${params.toString()}`);
+  if (!response.ok && (await retryAfterFillingArea(response))) {
+    response = await fetch(`${API_BASE}/restaurants?${params.toString()}`);
+  }
   if (!response.ok) {
     // The server says something useful here -- which ZIP it has no centroid
     // for, or that OpenStreetMap is busy and this is worth retrying. Replacing
@@ -58,7 +80,10 @@ const mapReview = (review: any): RestaurantReview => ({
 });
 
 export async function fetchRestaurantDetails(id: string): Promise<RestaurantDetails> {
-  const response = await fetch(`${API_BASE}/restaurant/${id}`);
+  // Place ids carry a slash ("way/346382086"), so an unencoded id splits into
+  // an extra path segment and never matches /restaurant/:id -- every details
+  // page 404'd. The server already encodes ids when it builds photo URLs.
+  const response = await fetch(`${API_BASE}/restaurant/${encodeURIComponent(id)}`);
   if (!response.ok) throw new Error("Failed to fetch restaurant details");
 
   const data = await response.json();
@@ -135,7 +160,10 @@ export async function decideRestaurants(params: DecideParams): Promise<DecideRes
   }
   q.append("limit", String(params.limit ?? 8));
 
-  const response = await fetch(`${API_BASE}/decide?${q.toString()}`);
+  let response = await fetch(`${API_BASE}/decide?${q.toString()}`);
+  if (!response.ok && (await retryAfterFillingArea(response))) {
+    response = await fetch(`${API_BASE}/decide?${q.toString()}`);
+  }
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new Error(body.error || "Could not work out a shortlist");
