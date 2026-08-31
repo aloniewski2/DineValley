@@ -5,7 +5,9 @@
 // somewhere it has no data for. One code path means a place fetched live is
 // shaped exactly like a place that was baked in.
 
-const ENDPOINTS = [
+// Exported because the browser is a fallback client for these same mirrors
+// when this server's IP is the one being rate-limited.
+export const OVERPASS_ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
   "https://overpass.osm.ch/api/interpreter",
@@ -38,7 +40,7 @@ out center tags ${cap};`;
 
 export async function fetchElements(lat, lng, radius, { log = () => {}, cap = ELEMENT_CAP } = {}) {
   let lastError;
-  for (const url of ENDPOINTS) {
+  for (const url of OVERPASS_ENDPOINTS) {
     try {
       log(`  querying ${new URL(url).host}… `);
       const abort = new AbortController();

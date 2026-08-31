@@ -78,6 +78,13 @@ export const DecidePage = ({
   onSelectRestaurant, onToggleFavorite, favorites, onCheckIn, visitStats,
 }: Props) => {
   const [zip, setZip] = useState("18104");
+  /* A ZIP is a stand-in for "where I am". When the browser will just tell us,
+     the stand-in is worse than the real thing -- a ZIP centroid can sit a few
+     miles from the person holding the phone. Coordinates win while they last;
+     typing a ZIP clears them. */
+  const [here, setHere] = useState<{ lat: number; lng: number } | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [locateError, setLocateError] = useState<string | null>(null);
   const [minutes, setMinutes] = useState(15);
   const [mode, setMode] = useState<"walk" | "drive">("drive");
   const [kinds, setKinds] = useState<string[]>([]);
@@ -97,11 +104,39 @@ export const DecidePage = ({
   const [error, setError] = useState<string | null>(null);
   const [waking, setWaking] = useState(false);
 
+  function useMyLocation() {
+    if (here) {
+      setHere(null);
+      setLocateError(null);
+      return;
+    }
+    if (!navigator.geolocation) {
+      setLocateError("This browser can't share a location. A ZIP code works everywhere.");
+      return;
+    }
+    setLocating(true);
+    setLocateError(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setHere({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setLocating(false);
+      },
+      () => {
+        // Refused, or the device simply couldn't say. Neither is an error
+        // worth alarming anyone about -- the ZIP box is still right there.
+        setLocateError("Couldn't get your location. Type a ZIP code instead.");
+        setLocating(false);
+      },
+      { timeout: 10000, maximumAge: 300000 },
+    );
+  }
+
   const search = useCallback(async () => {
     setLoading(true);
     setError(null);
     const params: DecideParams = {
-      zip: zip || undefined, minutes, mode, kinds, cuisines, dietary,
+      ...(here ? { lat: here.lat, lng: here.lng } : { zip: zip || undefined }),
+      minutes, mode, kinds, cuisines, dietary,
       openNow, independent, limit: 9,
     };
 
@@ -133,7 +168,7 @@ export const DecidePage = ({
       setWaking(false);
       setLoading(false);
     }
-  }, [zip, minutes, mode, kinds, cuisines, dietary, openNow, independent]);
+  }, [zip, here, minutes, mode, kinds, cuisines, dietary, openNow, independent]);
 
   // One shortlist on arrival, so the page is never an empty shell.
   useEffect(() => {
@@ -142,6 +177,10 @@ export const DecidePage = ({
   }, []);
 
   const askedForTag = dietary.length > 0;
+
+  let locationButtonLabel = "Use my location";
+  if (locating) locationButtonLabel = "Finding you…";
+  else if (here) locationButtonLabel = "Use a ZIP code instead";
 
   return (
     <div className="px-4 py-6 md:px-8">
@@ -163,13 +202,28 @@ export const DecidePage = ({
         >
           <Field label="Starting from">
             <input
-              value={zip}
-              onChange={(e) => setZip(e.target.value.replace(/\D/g, "").slice(0, 5))}
+              value={here ? "Your location" : zip}
+              onChange={(e) => {
+                setHere(null);
+                setLocateError(null);
+                setZip(e.target.value.replace(/\D/g, "").slice(0, 5));
+              }}
               inputMode="numeric"
               placeholder="ZIP code"
               aria-label="ZIP code"
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
             />
+            <button
+              type="button"
+              onClick={useMyLocation}
+              disabled={locating}
+              className="mt-2 text-xs text-emerald-700 underline-offset-2 hover:underline disabled:opacity-50 dark:text-emerald-400"
+            >
+              {locationButtonLabel}
+            </button>
+            {locateError && (
+              <p className="mt-1 text-xs text-amber-700 dark:text-amber-500">{locateError}</p>
+            )}
           </Field>
 
           <Field label={`Within ${minutes} min ${mode}`}>
