@@ -13,6 +13,23 @@ import { imageForPlace, loadImageCache, imageCacheStats } from "./preview.js";
 
 dotenv.config();
 
+/* A promise that rejects with nobody listening takes the whole process down
+ * on Node 15+, and on the free host that shows up as a bare 502 with no log
+ * anyone can read. Keep serving, and remember what happened so /version can
+ * say so -- a portfolio API has no secrets in its stack traces. */
+let lastCrash = null;
+const recordCrash = (kind) => (err) => {
+  lastCrash = {
+    kind,
+    at: new Date().toISOString(),
+    message: String(err?.message ?? err).slice(0, 300),
+    stack: String(err?.stack ?? "").split("\n").slice(0, 6).join("\n"),
+  };
+  console.error(`💥 ${kind}:`, err);
+};
+process.on("unhandledRejection", recordCrash("unhandledRejection"));
+process.on("uncaughtException", recordCrash("uncaughtException"));
+
 const app = express();
 
 const DEFAULT_ALLOWED_ORIGINS = [
@@ -128,7 +145,13 @@ const sanitizeReviews = (reviews) => {
 app.get("/", (_, res) => res.send("✅ Backend is alive!"));
 app.get("/health", (_, res) => res.status(200).send("ok"));
 // Which build is answering; Render sets the commit in the environment.
-app.get("/version", (_, res) => res.json({ commit: process.env.RENDER_GIT_COMMIT || null }));
+app.get("/version", (_, res) => res.json({
+  commit: process.env.RENDER_GIT_COMMIT || null,
+  node: process.version,
+  uptimeSeconds: Math.round(process.uptime()),
+  memoryMb: Math.round(process.memoryUsage().rss / 1048576),
+  lastCrash,
+}));
 app.get("/api/hello", (_, res) => res.json({ ok: true, message: "DineValley API is up" }));
 
 // ✅ Nearby Restaurants — served from the local OpenStreetMap index
