@@ -1,0 +1,16 @@
+name: Keep the backend warm
+
+# Render's free tier puts the API to sleep after fifteen idle minutes, and the
+# next visitor waits half a minute for it to wake -- or gives up. A ping every
+# ten minutes keeps it answering. GitHub pauses scheduled workflows after 60
+# days without a commit; a push to the repo starts it again.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl -sS -m 60 -o /dev/null -w "backend %{http_code} in %{time_total}s\n" https://dinevalley-backend.onrender.com/health

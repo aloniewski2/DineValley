@@ -52,10 +52,24 @@ DineValley/
 
 ## Restaurant data
 
-Restaurant data comes from **OpenStreetMap**, queried through the free
-[Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) and baked into
-`backend/data/places.json` at build time. There is no API key, no quota and no
-per-request cost, and the server answers searches from memory.
+Restaurant data comes from **OpenStreetMap**. There is no API key, no quota
+and no per-request cost. Two layers:
+
+- **Home region** — baked into `backend/data/places.json` at build time via the
+  free [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API), and
+  answered from memory.
+- **Everywhere else** — every US restaurant, pre-baked into half-degree tiles
+  and published as static files at
+  [aloniewski2/dinevalley-data](https://github.com/aloniewski2/dinevalley-data).
+  A ZIP search fetches the few tiles it touches (sub-second, from a CDN), so any
+  ZIP in the country works without a live query. Overpass is only asked if the
+  tile host cannot be reached. Rebuild the tiles from Geofabrik state extracts:
+
+  ```bash
+  brew install osmium-tool
+  cd backend
+  node scripts/build-tiles.mjs /path/to/state-pbfs /path/to/output   # -> output/tiles/*.json + index.json
+  ```
 
 ```bash
 cd backend

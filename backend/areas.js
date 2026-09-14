@@ -1,15 +1,16 @@
 // Anywhere-search: turn a ZIP code into a place list.
 //
 // The home region is baked into data/places.json at deploy time and answers
-// instantly. For anywhere else the server queries Overpass once, normalises the
-// result through the same pipeline, and keeps it — in memory and on disk — so
-// the second visitor to a given area pays nothing and OpenStreetMap isn't asked
-// the same question twice.
+// instantly. Anywhere else comes from pre-baked nationwide tiles (tiles.js),
+// with a live Overpass query only if the tile host cannot be reached. Either
+// way the result is normalised through the same pipeline and kept — in memory
+// and on disk — so the second visitor to an area pays nothing.
 
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { fetchElements, normalise } from "./osm.js";
+import { placesAround } from "./tiles.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CACHE_DIR = join(HERE, "data", "cache");
@@ -48,12 +49,31 @@ export async function loadZips() {
   return zips;
 }
 
-/** "18015" -> {lat,lng}; null if it isn't a real US ZIP. */
+/** "18015" -> {lat,lng}; null if it isn't a real US ZIP.
+ *
+ * The table holds Census ZCTAs, and a fair number of real ZIPs -- PO boxes,
+ * a single large building -- have no ZCTA of their own. They do share their
+ * first three digits with the post office that serves them, so the nearest
+ * ZIP by number inside that prefix is the same town. Prefixes with no entry
+ * at all (the IRS's 733xx, say) are left as an honest "don't know": guessing
+ * across prefixes lands in the wrong state. */
 export function centerForZip(zip) {
   const key = String(zip || "").trim();
   if (!/^\d{5}$/.test(key) || !zips) return null;
   const hit = zips[key];
-  return hit ? { lat: hit[0], lng: hit[1], zip: key } : null;
+  if (hit) return { lat: hit[0], lng: hit[1], zip: key };
+
+  const prefix = key.slice(0, 3);
+  let best = null, bestGap = Infinity;
+  for (let i = 0; i < 1000; i++) {
+    const candidate = `${prefix}${String(i).padStart(2, "0")}`;
+    if (!zips[candidate]) continue;
+    const gap = Math.abs(i - Number(key.slice(3)));
+    if (gap < bestGap) { best = candidate; bestGap = gap; }
+  }
+  if (!best) return null;
+  const near = zips[best];
+  return { lat: near[0], lng: near[1], zip: key, nearestKnownZip: best };
 }
 
 // Areas are cached on a coarse grid: two searches a few hundred metres apart
@@ -143,6 +163,21 @@ export async function areaFor({ lat, lng, radius = DEFAULT_RADIUS }, baked) {
       remember(key, onDisk);
       return { center, places: onDisk.places, source: "cache" };
     }
+    // The whole country is pre-baked into static tiles, so this is a CDN
+    // fetch, not a live query: sub-second, keyless, and never rate-limited.
+    // placesAround returns nearest-first, so trimming keeps the right slice.
+    try {
+      const places = (await placesAround({ lat, lng, radius })).slice(0, MAX_PLACES_PER_AREA);
+      const payload = { center, places, at: new Date().toISOString() };
+      remember(key, payload);
+      await writeDisk(key, payload);
+      return { center, places, source: "tiles" };
+    } catch (err) {
+      console.warn(`tiles unavailable for ${key} (${err.message}); asking Overpass`);
+    }
+
+    // Overpass is the fallback for a tile host that is down — and for the
+    // rare place whose extract has moved on since the last bake.
     let places;
     try {
       // One request, capped at the source. Asking twice — tight radius then

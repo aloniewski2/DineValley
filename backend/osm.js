@@ -7,10 +7,13 @@
 
 // Exported because the browser is a fallback client for these same mirrors
 // when this server's IP is the one being rate-limited.
+// Measured, not assumed: kumi.systems and private.coffee accept the connection
+// and never answer; osm.ch only holds Switzerland, so every US query it gets
+// comes back empty. These three answered, in this order of speed.
 export const OVERPASS_ENDPOINTS = [
-  "https://overpass-api.de/api/interpreter",
-  "https://overpass.kumi.systems/api/interpreter",
-  "https://overpass.osm.ch/api/interpreter",
+  "https://z.overpass-api.de/api/interpreter",
+  "https://lz4.overpass-api.de/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
 ];
 
 const AMENITIES = "restaurant|cafe|fast_food|bar|pub|ice_cream";
@@ -31,10 +34,7 @@ const QUERY_TIMEOUT_S = 20;
 export function overpassQuery(lat, lng, radius, cap = ELEMENT_CAP) {
   return `
 [out:json][timeout:${QUERY_TIMEOUT_S}];
-(
-  node["amenity"~"^(${AMENITIES})$"](around:${radius},${lat},${lng});
-  way ["amenity"~"^(${AMENITIES})$"](around:${radius},${lat},${lng});
-);
+nwr["amenity"~"^(${AMENITIES})$"](around:${radius},${lat},${lng});
 out center tags ${cap};`;
 }
 
@@ -156,7 +156,9 @@ export function normalise(elements) {
       phone: tags.phone || tags["contact:phone"] || null,
       website: tags.website || tags["contact:website"] || null,
       openingHours: tags.opening_hours || null,
+      brand: tags.brand || null,
       wheelchair: tags.wheelchair || null,
+      osmUrl: `https://www.openstreetmap.org/${el.type}/${el.id}`,
     });
   }
   return places;

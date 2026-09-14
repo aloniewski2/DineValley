@@ -127,6 +127,8 @@ const sanitizeReviews = (reviews) => {
 // ✅ Root & health checks
 app.get("/", (_, res) => res.send("✅ Backend is alive!"));
 app.get("/health", (_, res) => res.status(200).send("ok"));
+// Which build is answering; Render sets the commit in the environment.
+app.get("/version", (_, res) => res.json({ commit: process.env.RENDER_GIT_COMMIT || null }));
 app.get("/api/hello", (_, res) => res.json({ ok: true, message: "DineValley API is up" }));
 
 // ✅ Nearby Restaurants — served from the local OpenStreetMap index
