@@ -2,6 +2,7 @@ import express from "express";
 import axios from "axios";
 import cors from "cors";
 import dotenv from "dotenv";
+import { writeFileSync, readFileSync, mkdirSync } from "node:fs";
 import {
   loadPlaces, meta, searchPlaces, findPlace,
   toCard, toDetails, placeholderSvg,
@@ -29,6 +30,31 @@ const recordCrash = (kind) => (err) => {
 };
 process.on("unhandledRejection", recordCrash("unhandledRejection"));
 process.on("uncaughtException", recordCrash("uncaughtException"));
+
+/* Flight recorder. The deployed process has been observed to vanish right
+ * after answering an out-of-region search -- no exception, no rejection, no
+ * log to read. The disk survives a process restart on this host, so the last
+ * few request phases and the last exit reason are written there and reported
+ * by /version. If a death leaves no exit note, it was a kill from outside. */
+const BLACKBOX_DIR = new URL("./data/cache/", import.meta.url);
+const noteFile = (name) => new URL(name, BLACKBOX_DIR);
+const readNote = (name) => { try { return JSON.parse(readFileSync(noteFile(name), "utf8")); } catch { return null; } };
+const writeNote = (name, value) => {
+  try { mkdirSync(BLACKBOX_DIR, { recursive: true }); writeFileSync(noteFile(name), JSON.stringify(value)); } catch { /* best effort */ }
+};
+const journal = readNote("journal.json") ?? [];
+function journalEntry(entry) {
+  journal.push({ ...entry, at: new Date().toISOString(), memoryMb: Math.round(process.memoryUsage().rss / 1048576) });
+  while (journal.length > 12) journal.shift();
+  writeNote("journal.json", journal);
+}
+const lastExit = readNote("last-exit.json");
+writeNote("last-exit.json", null);            // so a hard kill leaves it empty
+for (const sig of ["SIGTERM", "SIGINT", "SIGHUP"]) {
+  process.on(sig, () => { writeNote("last-exit.json", { reason: sig, at: new Date().toISOString() }); process.exit(0); });
+}
+process.on("exit", (code) => writeNote("last-exit.json", { reason: `exit ${code}`, at: new Date().toISOString(), lastCrash }));
+journalEntry({ phase: "boot", node: process.version, previousExit: lastExit });
 
 const app = express();
 
@@ -151,6 +177,8 @@ app.get("/version", (_, res) => res.json({
   uptimeSeconds: Math.round(process.uptime()),
   memoryMb: Math.round(process.memoryUsage().rss / 1048576),
   lastCrash,
+  lastExit,
+  journal,
 }));
 app.get("/api/hello", (_, res) => res.json({ ok: true, message: "DineValley API is up" }));
 
@@ -238,8 +266,10 @@ app.get("/restaurants", async (req, res) => {
 
     let area = null;
     if (center) {
+      journalEntry({ phase: "area:start", zip: center.zip ?? null });
       try {
         area = await areaFor({ ...center, radius: radiusMeters }, meta().dataset);
+        journalEntry({ phase: "area:done", source: area.source, places: area.places.length });
       } catch (err) {
         if (err.code === "AREA_UNAVAILABLE") {
           // Better an honest "try again" than a confident empty list -- and
@@ -257,8 +287,9 @@ app.get("/restaurants", async (req, res) => {
     const { matches, total, nextPageToken } = searchPlaces({
       keyword, minPrice, maxPrice, openNow, radius, pageToken, area,
     });
+    if (area) journalEntry({ phase: "search:done", total });
 
-    res.json({
+    const body = {
       results: matches.map((place) => toCard(place, baseUrl)),
       nextPageToken,
       total,
@@ -268,7 +299,10 @@ app.get("/restaurants", async (req, res) => {
         center: area?.center ?? meta().center,
         source: area?.source ?? "local",
       },
-    });
+    };
+    if (area) journalEntry({ phase: "cards:done" });
+    res.json(body);
+    if (area) journalEntry({ phase: "responded" });
   } catch (error) {
     console.error("❌ Search failed:", error.message);
     res.status(500).json({ error: "Failed to fetch restaurants", details: error.message });
